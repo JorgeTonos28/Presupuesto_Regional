@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.1
+ * Versión: 1.0.2
  ***************/
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -847,5 +847,18 @@ function normalizeDriveUrl_(value) {
   // Si ya es URL, devolver tal cual
   if (/^https?:\/\//i.test(val)) return val;
   // Asumir que es un ID de archivo de Drive
+  // Si la API Drive está habilitada, usarla para obtener webContentLink
+  try {
+      if (typeof Drive !== 'undefined') {
+          const file = Drive.Files.get(val);
+          // webContentLink fuerza descarga en algunos navegadores, pero thumbnailLink a veces es pequeño.
+          // thumbnailLink con sz=w1000 es un hack común.
+          // O usar la URL pública.
+          // Por simplicidad, probemos la URL directa si el archivo es público.
+          return 'https://drive.google.com/uc?export=view&id=' + val;
+      }
+  } catch (e) {
+      // Fallback
+  }
   return 'https://drive.google.com/uc?export=view&id=' + val;
 }

@@ -83,6 +83,7 @@
     Busy.show('Inicializando…');
     try {
       const res = await callServer('apiBootstrap');
+      if (!res) throw new Error('Respuesta vacía del servidor (revisar logs).');
       if (!res.ok) throw new Error(res.message || 'No autorizado');
 
       YEARS = res.data.years || [];
