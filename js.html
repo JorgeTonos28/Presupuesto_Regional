@@ -201,7 +201,7 @@
       tb.querySelectorAll('button[data-id]').forEach(btn => {
         btn.onclick = async () => {
           const segId = btn.getAttribute('data-id');
-          const ok = await modal('¿Eliminar esta segmentación? Esto recalcula el sobrante.', 'Confirmar', { confirm: true, okText: 'Sí, eliminar' });
+          const ok = await modal('¿Eliminar esta segmentación? Esto recalcula el disponible.', 'Confirmar', { confirm: true, okText: 'Sí, eliminar' });
           if (!ok) return;
           Busy.show('Eliminando…');
           try {

@@ -176,11 +176,11 @@ function apiCreateSegmentation(payload) {
     });
 
     const totalRemaining = round2_(base.total - seg.total);
-    if (!(totalRemaining > 0)) return fail_('No hay sobrante por segmentar en este año.');
+    if (!(totalRemaining > 0)) return fail_('No hay disponible por presupuestar en este año.');
 
     const targetTotal = round2_(totalRemaining * (pct / 100));
 
-    // Distribución proporcional por regional sobre su sobrante
+    // Distribución proporcional por regional sobre su disponible
     const dist = distributeByRemaining_(remainingByRegional, targetTotal);
 
     const ss = SpreadsheetApp.getActive();
@@ -747,17 +747,17 @@ function distributeByRemaining_(remainingByRegional, targetTotal) {
   // Ajuste por diferencias de redondeo (centavos)
   let diff = round2_(targetTotal - allocated);
   if (diff !== 0 && regs.length) {
-    // Ajustar al regional con mayor sobrante
+    // Ajustar al regional con mayor disponible
     regs.sort((a, b) => (remainingByRegional[b] || 0) - (remainingByRegional[a] || 0));
     const top = regs[0];
     dist[top] = round2_((dist[top] || 0) + diff);
 
-    // No permitir exceder su sobrante
+    // No permitir exceder su disponible
     if (dist[top] > remainingByRegional[top]) dist[top] = round2_(remainingByRegional[top]);
     if (dist[top] < 0) dist[top] = 0;
   }
 
-  // Asegura no exceder sobrante por regional
+  // Asegura no exceder disponible por regional
   Object.keys(dist).forEach(r => {
     const max = remainingByRegional[r] || 0;
     if (dist[r] > max) dist[r] = round2_(max);
