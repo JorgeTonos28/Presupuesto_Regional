@@ -15,6 +15,9 @@
     font-family: Arial, sans-serif;
     color:var(--text);
     background:var(--bg);
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
   }
   .topbar{
     display:flex;
@@ -44,7 +47,13 @@
     color:var(--primary);
     font-weight:700;
   }
-  .container{ padding:16px; max-width:1200px; margin:0 auto; }
+  .container{
+    padding:16px;
+    max-width:1200px;
+    margin:0 auto;
+    width: 100%;
+    flex: 1;
+  }
   .footer{
     display:flex; justify-content:space-between;
     align-items: center;
@@ -102,6 +111,12 @@
     color:white;
     font-weight:700;
   }
+  .table-responsive {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
   table{
     width:100%;
     border-collapse:collapse;
@@ -136,6 +151,7 @@
     background:rgba(17,24,39,.45);
     z-index:50;
   }
+  #overlay { z-index: 100; }
   .overlay-card, .modal-card{
     width:min(520px, 92vw);
     background:white;

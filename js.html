@@ -91,6 +91,17 @@
       APP_LOCALE = (res.data.config && res.data.config.locale) || 'es-DO';
       APP_CURRENCY = (res.data.config && res.data.config.currencyCode) || '';
 
+      const logoUrl = res.data.config && res.data.config.logoUrl;
+      const signatureUrl = res.data.config && res.data.config.signatureUrl;
+
+      const logoEl = document.getElementById('appLogo');
+      if (logoUrl) { logoEl.src = logoUrl; logoEl.hidden = false; }
+      else { logoEl.hidden = true; }
+
+      const sigEl = document.getElementById('footerSig');
+      if (signatureUrl) { sigEl.src = signatureUrl; sigEl.hidden = false; }
+      else { sigEl.hidden = true; }
+
       // Roles UI
       const isAdmin = SESSION_USER.role === 'ADMIN';
       document.getElementById('navAdmin').hidden = !isAdmin;
@@ -192,7 +203,10 @@
         <td>${Number(r.pct || 0).toFixed(2)}%</td>
         <td>${fmtMoney(r.totalSegmented || 0)}</td>
         <td>${escapeHtml(r.createdBy || '')}</td>
-        ${isAdmin ? `<td><button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button></td>` : ''}
+        ${isAdmin ? `<td>
+           <button class="btn btn-primary" onclick="showSegmentationDetail('${escapeHtml(r.segId)}')">Ver</button>
+           <button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button>
+        </td>` : ''}
       `;
       tb.appendChild(tr);
     });
@@ -281,6 +295,7 @@
       renderBaseTable(res.data.baseTable || {});
 
     } catch (e) {
+      console.error('loadRegionalDetail error', e);
       await modal(String(e.message || e), 'Error');
     } finally {
       Busy.hide();
@@ -386,6 +401,34 @@
       await loadUsers();
       await modal('Usuario guardado.', 'OK');
     } catch (e) {
+      console.error('saveUser error', e);
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  async function showSegmentationDetail(segId){
+    Busy.show('Cargando detalle…');
+    try {
+      const res = await callServer('apiGetSegmentationDetail', { segId });
+      if (!res.ok) throw new Error(res.message || 'Error');
+
+      const tb = document.getElementById('tblSegDetailBody');
+      const tf = document.getElementById('tSegDetailTotal');
+      tb.innerHTML = '';
+
+      (res.data.rows || []).forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(r.regional)}</td><td>${fmtMoney(r.amount)}</td>`;
+        tb.appendChild(tr);
+      });
+
+      tf.textContent = fmtMoney(res.data.total);
+      document.getElementById('modalDetail').hidden = false;
+
+    } catch (e) {
+      console.error('showSegmentationDetail error', e);
       await modal(String(e.message || e), 'Error');
     } finally {
       Busy.hide();

@@ -100,6 +100,8 @@ function apiBootstrap() {
       config: {
         locale: cfg.locale || 'es-DO',
         currencyCode: cfg.currency_code || '',
+        logoUrl: cfg.logo_url || '',
+        signatureUrl: cfg.signature_url || ''
       }
     });
   } catch (err) {
@@ -209,6 +211,7 @@ function apiCreateSegmentation(payload) {
     // Invalida cache
     CacheService.getScriptCache().remove('dash_' + year);
 
+    SpreadsheetApp.flush();
     return ok_({ segId, year });
   } catch (err) {
     Logger.log('apiCreateSegmentation error: ' + err);
@@ -255,6 +258,7 @@ function apiDeleteSegmentation(payload) {
     }
 
     CacheService.getScriptCache().remove('dash_' + year);
+    SpreadsheetApp.flush();
     return ok_({ segId, year });
   } catch (err) {
     Logger.log('apiDeleteSegmentation error: ' + err);
@@ -299,6 +303,48 @@ function apiGetRegionalDetail(payload) {
   } catch (err) {
     Logger.log('apiGetRegionalDetail error: ' + err);
     return fail_('No se pudo cargar detalle regional: ' + err.message);
+  }
+}
+
+function apiGetSegmentationDetail(payload) {
+  try {
+    const userRes = getSessionUser_();
+    if (!userRes.ok) return userRes;
+
+    const segId = String(payload && payload.segId || '').trim();
+    if (!segId) return fail_('segId inválido.');
+
+    const ss = SpreadsheetApp.getActive();
+    const shDet = ss.getSheetByName(SHEET_SEG_D);
+    const map = getHeaderMap_(shDet);
+    const last = shDet.getLastRow();
+    if (last < 2) return ok_({ rows: [], total: 0 });
+
+    const values = shDet.getRange(2, 1, last - 1, shDet.getLastColumn()).getValues();
+    const rows = [];
+    let total = 0;
+
+    values.forEach(r => {
+        const id = String(r[map.segId] || '');
+        if (id !== segId) return;
+
+        const status = String(r[map.status] || '');
+        if (status !== 'ACTIVE') return;
+
+        const regional = String(r[map.regional] || '');
+        const amount = toNumber_(r[map.amountSegmented]);
+
+        rows.push({ regional, amount });
+        total = round2_(total + amount);
+    });
+
+    // Sort by regional name
+    rows.sort((a, b) => a.regional.localeCompare(b.regional));
+
+    return ok_({ rows, total });
+  } catch (err) {
+      Logger.log('apiGetSegmentationDetail error: ' + err);
+      return fail_('Error: ' + err.message);
   }
 }
 
@@ -367,6 +413,7 @@ function apiUpsertUser(payload) {
       sh.appendRow([email, name, role, status, new Date()]);
     }
 
+    SpreadsheetApp.flush();
     return ok_({ email });
   } catch (err) {
     Logger.log('apiUpsertUser error: ' + err);
@@ -443,7 +490,9 @@ function ensureConfigDefaults_(ss) {
   const defaults = [
     ['allowed_domain', ''],     // ej: midominio.gob.do
     ['locale', 'es-DO'],
-    ['currency_code', '']       // ej: DOP (opcional)
+    ['currency_code', ''],       // ej: DOP (opcional)
+    ['logo_url', ''],
+    ['signature_url', '']
   ];
   defaults.forEach(([k, v]) => {
     if (existing[k] === undefined) sh.appendRow([k, v]);
