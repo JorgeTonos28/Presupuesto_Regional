@@ -1,0 +1,50 @@
+<section id="viewAdminSection" class="view">
+  <div class="grid">
+    <div class="col-12 card">
+      <div style="font-weight:800;margin-bottom:8px">Usuarios (solo Administradores)</div>
+
+      <div class="row">
+        <div>
+          <label>Email</label>
+          <input id="uEmail" type="email" placeholder="usuario@dominio" />
+        </div>
+        <div>
+          <label>Nombre</label>
+          <input id="uName" type="text" placeholder="Nombre Apellido" />
+        </div>
+        <div>
+          <label>Rol</label>
+          <select id="uRole">
+            <option value="ADMIN">ADMIN</option>
+            <option value="COLAB">COLAB</option>
+          </select>
+        </div>
+        <div>
+          <label>Estado</label>
+          <select id="uStatus">
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="INACTIVE">INACTIVE</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn btn-primary" id="btnSaveUser">Guardar</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Nombre</th>
+              <th>Rol</th>
+              <th>Estado</th>
+              <th>Creado</th>
+            </tr>
+          </thead>
+          <tbody id="tblUsers"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>

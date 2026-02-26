@@ -1,0 +1,68 @@
+<section id="viewRegionalSection" class="view">
+  <div class="grid">
+    <div class="col-12 card">
+      <div class="row">
+        <div>
+          <label>Año</label>
+          <select id="yearSelectRegional"></select>
+        </div>
+        <div>
+          <label>Regional</label>
+          <select id="regionalSelect"></select>
+        </div>
+        <div>
+          <button class="btn btn-primary" id="btnLoadRegional">Cargar detalle</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-4 card">
+      <div class="muted">Base</div>
+      <div style="font-size:22px;font-weight:800" id="rBase">—</div>
+    </div>
+    <div class="col-4 card">
+      <div class="muted">Segmentado</div>
+      <div style="font-size:22px;font-weight:800" id="rSeg">—</div>
+    </div>
+    <div class="col-4 card">
+      <div class="muted">Sobrante</div>
+      <div style="font-size:22px;font-weight:800" id="rRem">—</div>
+    </div>
+
+    <div class="col-12">
+      <div style="font-weight:800;margin:8px 0">Histórico de segmentaciones (esta regional)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Etiqueta</th>
+            <th>%</th>
+            <th>Sobrante antes</th>
+            <th>Segmentado</th>
+            <th>Sobrante después</th>
+          </tr>
+        </thead>
+        <tbody id="tblRegionalSegs"></tbody>
+      </table>
+    </div>
+
+    <div class="col-12">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0">
+        <div style="font-weight:800">Base de datos (filtrada) - paginada</div>
+        <div class="muted" id="basePagerInfo"></div>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <div style="flex:0 0 auto">
+          <button class="btn" id="btnPrev">Anterior</button>
+        </div>
+        <div style="flex:0 0 auto">
+          <button class="btn" id="btnNext">Siguiente</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr id="baseHead"></tr></thead>
+        <tbody id="baseBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,74 @@
+<section id="viewDashboardSection" class="view active">
+  <div class="grid">
+    <div class="col-12 card">
+      <div class="row">
+        <div>
+          <label>Año</label>
+          <select id="yearSelect"></select>
+        </div>
+
+        <div id="segFormWrap" hidden>
+          <label>Porcentaje a segmentar (sobre el SOBRANTE)</label>
+          <input id="pctInput" type="number" min="0.01" max="100" step="0.01" placeholder="Ej: 10" />
+        </div>
+
+        <div id="segLabelWrap" hidden>
+          <label>Etiqueta (opcional)</label>
+          <input id="labelInput" type="text" placeholder="Ej: 1ra segmentación" />
+        </div>
+
+        <div id="segBtnWrap" hidden>
+          <button class="btn btn-primary" id="btnSegmentar">Aplicar segmentación</button>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px">
+        Nota: cada segmentación se calcula sobre lo que queda (sobrante) y se acumula hasta llegar a 100%.
+      </div>
+    </div>
+
+    <div class="col-4 card">
+      <div class="muted">Total Presupuesto</div>
+      <div style="font-size:22px;font-weight:800" id="tBase">—</div>
+    </div>
+    <div class="col-4 card">
+      <div class="muted">Total Segmentado</div>
+      <div style="font-size:22px;font-weight:800" id="tSeg">—</div>
+    </div>
+    <div class="col-4 card">
+      <div class="muted">Total Sobrante</div>
+      <div style="font-size:22px;font-weight:800" id="tRem">—</div>
+    </div>
+
+    <div class="col-12">
+      <div style="font-weight:800;margin:8px 0">Por Regional</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Regional</th>
+            <th>Base</th>
+            <th>Segmentado</th>
+            <th>Sobrante</th>
+          </tr>
+        </thead>
+        <tbody id="tblRegionals"></tbody>
+      </table>
+    </div>
+
+    <div class="col-12">
+      <div style="font-weight:800;margin:8px 0">Segmentaciones (del año)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Etiqueta</th>
+            <th>%</th>
+            <th>Total segmentado</th>
+            <th>Creado por</th>
+            <th id="thActions" hidden>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tblSegs"></tbody>
+      </table>
+    </div>
+  </div>
+</section>

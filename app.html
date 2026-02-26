@@ -1,0 +1,32 @@
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-title">Segmentación de Presupuesto</div>
+    <div class="brand-subtitle">Dashboard por año • Segmentación sobre sobrante</div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav-btn" id="navDashboard">Dashboard</button>
+    <button class="nav-btn" id="navRegional">Detalle por Regional</button>
+    <button class="nav-btn" id="navAdmin" hidden>Administración</button>
+  </nav>
+</div>
+
+<!-- Overlay de carga -->
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <div id="overlayText">Cargando…</div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="overlay" hidden>
+  <div class="modal-card">
+    <div class="modal-title" id="mTitle">Mensaje</div>
+    <div class="modal-msg" id="mMsg"></div>
+    <div class="modal-actions">
+      <button class="btn" id="mCancel" hidden>Cancelar</button>
+      <button class="btn btn-primary" id="mOk">Aceptar</button>
+    </div>
+  </div>
+</div>

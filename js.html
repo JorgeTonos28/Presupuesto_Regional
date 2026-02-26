@@ -1,0 +1,401 @@
+<script>
+  const Busy = {
+    _count: 0,
+    show(msg){
+      this._count++;
+      document.getElementById('overlayText').textContent = msg || 'Cargando…';
+      document.getElementById('overlay').hidden = false;
+    },
+    hide(){
+      this._count = Math.max(0, this._count - 1);
+      if (this._count === 0) document.getElementById('overlay').hidden = true;
+    },
+    reset(){
+      this._count = 0;
+      document.getElementById('overlay').hidden = true;
+    }
+  };
+
+  function modal(msg, title, opts){
+    const m = document.getElementById('modal');
+    const t = document.getElementById('mTitle');
+    const b = document.getElementById('mMsg');
+    const ok = document.getElementById('mOk');
+    const cancel = document.getElementById('mCancel');
+
+    t.textContent = title || 'Mensaje';
+    b.textContent = msg || '';
+    cancel.hidden = true;
+
+    return new Promise(resolve => {
+      ok.onclick = () => { m.hidden = true; resolve(true); };
+      cancel.onclick = () => { m.hidden = true; resolve(false); };
+
+      if (opts && opts.confirm) {
+        cancel.hidden = false;
+        cancel.textContent = opts.cancelText || 'Cancelar';
+        ok.textContent = opts.okText || 'Aceptar';
+      } else {
+        ok.textContent = 'Aceptar';
+      }
+
+      m.hidden = false;
+    });
+  }
+
+  function callServer(fn, payload){
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(res => resolve(res))
+        .withFailureHandler(err => reject(err))
+        [fn](payload);
+    });
+  }
+
+  // Formato monetario (si config.currencyCode está vacío, se muestra número)
+  let APP_LOCALE = 'es-DO';
+  let APP_CURRENCY = '';
+
+  function fmtMoney(n){
+    const num = Number(n || 0);
+    if (APP_CURRENCY) {
+      return new Intl.NumberFormat(APP_LOCALE, { style:'currency', currency: APP_CURRENCY }).format(num);
+    }
+    return new Intl.NumberFormat(APP_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  }
+
+  // Navegación
+  function showView(id){
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    if (id === 'viewDashboardSection') document.getElementById('navDashboard').classList.add('active');
+    if (id === 'viewRegionalSection') document.getElementById('navRegional').classList.add('active');
+    if (id === 'viewAdminSection') document.getElementById('navAdmin').classList.add('active');
+  }
+
+  let YEARS = [];
+  let CURRENT_YEAR = null;
+  let DASH_CACHE = null;
+
+  async function bootstrap(){
+    Busy.show('Inicializando…');
+    try {
+      const res = await callServer('apiBootstrap');
+      if (!res.ok) throw new Error(res.message || 'No autorizado');
+
+      YEARS = res.data.years || [];
+      CURRENT_YEAR = YEARS[0] || (new Date()).getFullYear();
+
+      APP_LOCALE = (res.data.config && res.data.config.locale) || 'es-DO';
+      APP_CURRENCY = (res.data.config && res.data.config.currencyCode) || '';
+
+      // Roles UI
+      const isAdmin = SESSION_USER.role === 'ADMIN';
+      document.getElementById('navAdmin').hidden = !isAdmin;
+      document.getElementById('segFormWrap').hidden = !isAdmin;
+      document.getElementById('segLabelWrap').hidden = !isAdmin;
+      document.getElementById('segBtnWrap').hidden = !isAdmin;
+      document.getElementById('thActions').hidden = !isAdmin;
+
+      // Fill years selects
+      fillSelect('yearSelect', YEARS, CURRENT_YEAR);
+      fillSelect('yearSelectRegional', YEARS, CURRENT_YEAR);
+
+      // Events
+      document.getElementById('navDashboard').onclick = () => showView('viewDashboardSection');
+      document.getElementById('navRegional').onclick = () => showView('viewRegionalSection');
+      document.getElementById('navAdmin').onclick = () => { showView('viewAdminSection'); loadUsers(); };
+
+      document.getElementById('yearSelect').onchange = () => loadDashboard();
+      document.getElementById('btnSegmentar').onclick = () => onSegmentar();
+
+      document.getElementById('btnLoadRegional').onclick = () => loadRegionalDetail(true);
+      document.getElementById('btnPrev').onclick = () => pageRegional(-1);
+      document.getElementById('btnNext').onclick = () => pageRegional(+1);
+
+      document.getElementById('btnSaveUser').onclick = () => saveUser();
+
+      // Inicial
+      showView('viewDashboardSection');
+      await loadDashboard();
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function fillSelect(id, items, selected){
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    (items || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = String(v);
+      opt.textContent = String(v);
+      if (String(v) === String(selected)) opt.selected = true;
+      el.appendChild(opt);
+    });
+  }
+
+  async function loadDashboard(){
+    const year = Number(document.getElementById('yearSelect').value);
+    Busy.show('Cargando dashboard…');
+    try {
+      const res = await callServer('apiGetDashboard', { year });
+      if (!res.ok) throw new Error(res.message || 'Error');
+
+      DASH_CACHE = res.data;
+
+      document.getElementById('tBase').textContent = fmtMoney(res.data.totals.base);
+      document.getElementById('tSeg').textContent = fmtMoney(res.data.totals.segmented);
+      document.getElementById('tRem').textContent = fmtMoney(res.data.totals.remaining);
+
+      renderRegionals(res.data.regionals || []);
+      renderSegs(res.data.segmentations || []);
+      fillRegionalOptionsFromDashboard(res.data.regionals || []);
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function renderRegionals(rows){
+    const tb = document.getElementById('tblRegionals');
+    tb.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="pill">${escapeHtml(r.regional)}</span></td>
+        <td>${fmtMoney(r.base)}</td>
+        <td>${fmtMoney(r.segmented)}</td>
+        <td><b>${fmtMoney(r.remaining)}</b></td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  function renderSegs(rows){
+    const tb = document.getElementById('tblSegs');
+    tb.innerHTML = '';
+    const isAdmin = SESSION_USER.role === 'ADMIN';
+
+    rows.forEach(r => {
+      const dt = r.createdAt ? new Date(r.createdAt) : null;
+      const dateTxt = dt ? dt.toLocaleString(APP_LOCALE) : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(dateTxt)}</td>
+        <td>${escapeHtml(r.label || '')}</td>
+        <td>${Number(r.pct || 0).toFixed(2)}%</td>
+        <td>${fmtMoney(r.totalSegmented || 0)}</td>
+        <td>${escapeHtml(r.createdBy || '')}</td>
+        ${isAdmin ? `<td><button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button></td>` : ''}
+      `;
+      tb.appendChild(tr);
+    });
+
+    if (isAdmin) {
+      tb.querySelectorAll('button[data-id]').forEach(btn => {
+        btn.onclick = async () => {
+          const segId = btn.getAttribute('data-id');
+          const ok = await modal('¿Eliminar esta segmentación? Esto recalcula el sobrante.', 'Confirmar', { confirm: true, okText: 'Sí, eliminar' });
+          if (!ok) return;
+          Busy.show('Eliminando…');
+          try {
+            const year = Number(document.getElementById('yearSelect').value);
+            const res = await callServer('apiDeleteSegmentation', { segId, year });
+            if (!res.ok) throw new Error(res.message || 'Error');
+            await loadDashboard();
+          } catch (e) {
+            await modal(String(e.message || e), 'Error');
+          } finally {
+            Busy.hide();
+          }
+        };
+      });
+    }
+  }
+
+  async function onSegmentar(){
+    const year = Number(document.getElementById('yearSelect').value);
+    const pct = Number(document.getElementById('pctInput').value);
+    const label = String(document.getElementById('labelInput').value || '').trim();
+
+    if (!(pct > 0 && pct <= 100)) {
+      await modal('Porcentaje debe ser > 0 y <= 100.', 'Validación');
+      return;
+    }
+
+    Busy.show('Aplicando segmentación…');
+    try {
+      const res = await callServer('apiCreateSegmentation', { year, pct, label });
+      if (!res.ok) throw new Error(res.message || 'Error');
+      document.getElementById('pctInput').value = '';
+      document.getElementById('labelInput').value = '';
+      await loadDashboard();
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function fillRegionalOptionsFromDashboard(regionals){
+    const sel = document.getElementById('regionalSelect');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '';
+    regionals.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.regional;
+      opt.textContent = r.regional;
+      sel.appendChild(opt);
+    });
+    if (cur) sel.value = cur;
+  }
+
+  // Regional detail pagination
+  let REG_OFFSET = 0;
+  const REG_LIMIT = 50;
+
+  async function loadRegionalDetail(resetOffset){
+    if (resetOffset) REG_OFFSET = 0;
+
+    const year = Number(document.getElementById('yearSelectRegional').value);
+    const regional = String(document.getElementById('regionalSelect').value || '').trim();
+    if (!regional) return modal('Selecciona una regional.', 'Validación');
+
+    Busy.show('Cargando regional…');
+    try {
+      const res = await callServer('apiGetRegionalDetail', { year, regional, offset: REG_OFFSET, limit: REG_LIMIT });
+      if (!res.ok) throw new Error(res.message || 'Error');
+
+      document.getElementById('rBase').textContent = fmtMoney(res.data.totals.base);
+      document.getElementById('rSeg').textContent = fmtMoney(res.data.totals.segmented);
+      document.getElementById('rRem').textContent = fmtMoney(res.data.totals.remaining);
+
+      renderRegionalSegs(res.data.segmentations || []);
+      renderBaseTable(res.data.baseTable || {});
+
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function pageRegional(dir){
+    const next = REG_OFFSET + (dir * REG_LIMIT);
+    REG_OFFSET = Math.max(0, next);
+    loadRegionalDetail(false);
+  }
+
+  function renderRegionalSegs(rows){
+    const tb = document.getElementById('tblRegionalSegs');
+    tb.innerHTML = '';
+    rows.forEach(r => {
+      const dt = r.createdAt ? new Date(r.createdAt) : null;
+      const dateTxt = dt ? dt.toLocaleString(APP_LOCALE) : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(dateTxt)}</td>
+        <td>${escapeHtml(r.label || '')}</td>
+        <td>${Number(r.pct || 0).toFixed(2)}%</td>
+        <td>${fmtMoney(r.remainingBefore)}</td>
+        <td><b>${fmtMoney(r.amountSegmented)}</b></td>
+        <td>${fmtMoney(r.remainingAfter)}</td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  function renderBaseTable(t){
+    const head = document.getElementById('baseHead');
+    const body = document.getElementById('baseBody');
+    const info = document.getElementById('basePagerInfo');
+
+    head.innerHTML = '';
+    body.innerHTML = '';
+
+    const cols = t.columns || [];
+    cols.forEach(c => {
+      const th = document.createElement('th');
+      th.textContent = c;
+      head.appendChild(th);
+    });
+
+    (t.rows || []).forEach(r => {
+      const tr = document.createElement('tr');
+      cols.forEach((_, idx) => {
+        const td = document.createElement('td');
+        td.textContent = r[idx] === null || r[idx] === undefined ? '' : String(r[idx]);
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+
+    const total = t.total || 0;
+    const from = (t.offset || 0) + 1;
+    const to = Math.min((t.offset || 0) + (t.limit || 0), total);
+    info.textContent = total ? `Mostrando ${from}-${to} de ${total}` : 'Sin registros';
+  }
+
+  async function loadUsers(){
+    if (SESSION_USER.role !== 'ADMIN') return;
+    Busy.show('Cargando usuarios…');
+    try {
+      const res = await callServer('apiListUsers');
+      if (!res.ok) throw new Error(res.message || 'Error');
+      const tb = document.getElementById('tblUsers');
+      tb.innerHTML = '';
+      res.data.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(u.email)}</td>
+          <td>${escapeHtml(u.name || '')}</td>
+          <td>${escapeHtml(u.role)}</td>
+          <td>${escapeHtml(u.status)}</td>
+          <td>${escapeHtml(u.createdAt ? new Date(u.createdAt).toLocaleString(APP_LOCALE) : '')}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  async function saveUser(){
+    const email = String(document.getElementById('uEmail').value || '').trim();
+    const name = String(document.getElementById('uName').value || '').trim();
+    const role = String(document.getElementById('uRole').value || '').trim();
+    const status = String(document.getElementById('uStatus').value || '').trim();
+
+    if (!email) return modal('Email requerido.', 'Validación');
+
+    Busy.show('Guardando usuario…');
+    try {
+      const res = await callServer('apiUpsertUser', { email, name, role, status });
+      if (!res.ok) throw new Error(res.message || 'Error');
+      document.getElementById('uEmail').value = '';
+      document.getElementById('uName').value = '';
+      await loadUsers();
+      await modal('Usuario guardado.', 'OK');
+    } catch (e) {
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  }
+
+  // Start
+  bootstrap();
+</script>

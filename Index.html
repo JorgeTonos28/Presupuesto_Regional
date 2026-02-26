@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <?!= include('styles'); ?>
+  </head>
+  <body>
+    <script>
+      // Breakout de iframe en móvil (mejora estilos / UX)
+      (function () {
+        try {
+          if (window.top !== window.self && window.innerWidth < 1024) {
+            window.top.location = window.location.href;
+          }
+        } catch (e) {}
+      })();
+    </script>
+
+    <?!= include('app'); ?>
+
+    <main class="container">
+      <?!= include('view_dashboard'); ?>
+      <?!= include('view_regional'); ?>
+      <?!= include('view_admin'); ?>
+    </main>
+
+    <footer class="footer">
+      <span>Versión: <?= APP_VERSION ?></span>
+      <span class="muted">Usuario: <?= SESSION_USER.email ?></span>
+    </footer>
+
+    <script>
+      const SESSION_USER = <?!= JSON.stringify(SESSION_USER) ?>;
+      const APP_VERSION = <?!= JSON.stringify(APP_VERSION) ?>;
+    </script>
+    <?!= include('js'); ?>
+  </body>
+</html>
