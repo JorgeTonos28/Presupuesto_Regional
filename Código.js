@@ -89,24 +89,34 @@ function setup() {
 function apiBootstrap() {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const cfg = getConfig_();
     const years = listYears_();
-    return ok_({
+
+    // Intentar normalizar URLs
+    let logoUrl = '';
+    let signatureUrl = '';
+    try { logoUrl = normalizeDriveUrl_(cfg.logo_url); } catch(e) { Logger.log('Logo err: ' + e); }
+    try { signatureUrl = normalizeDriveUrl_(cfg.signature_url); } catch(e) { Logger.log('Sig err: ' + e); }
+
+    const response = {
       appVersion: APP_VERSION,
       user: userRes.data,
       years,
       config: {
         locale: cfg.locale || 'es-DO',
         currencyCode: cfg.currency_code || '',
-        logoUrl: normalizeDriveUrl_(cfg.logo_url),
-        signatureUrl: normalizeDriveUrl_(cfg.signature_url)
+        logoUrl: logoUrl,
+        signatureUrl: signatureUrl
       }
-    });
+    };
+
+    return ok_(response);
   } catch (err) {
     Logger.log('apiBootstrap error: ' + err);
-    return fail_('No se pudo inicializar la app: ' + err.message);
+    return fail_('No se pudo inicializar la app: ' + (err.message || String(err)));
   }
 }
 
@@ -847,18 +857,23 @@ function normalizeDriveUrl_(value) {
   // Si ya es URL, devolver tal cual
   if (/^https?:\/\//i.test(val)) return val;
   // Asumir que es un ID de archivo de Drive
-  // Si la API Drive está habilitada, usarla para obtener webContentLink
+  // Si la API Drive está habilitada, usarla para obtener webContentLink o thumbnailLink
   try {
       if (typeof Drive !== 'undefined') {
+          // Intentar obtener el archivo
           const file = Drive.Files.get(val);
-          // webContentLink fuerza descarga en algunos navegadores, pero thumbnailLink a veces es pequeño.
-          // thumbnailLink con sz=w1000 es un hack común.
-          // O usar la URL pública.
-          // Por simplicidad, probemos la URL directa si el archivo es público.
-          return 'https://drive.google.com/uc?export=view&id=' + val;
+          if (file) {
+              if (file.thumbnailLink) {
+                 // Hack para mejorar la resolución del thumbnailLink
+                 return file.thumbnailLink.replace('=s220', '=s1000');
+              }
+              if (file.webContentLink) {
+                 return file.webContentLink;
+              }
+          }
       }
   } catch (e) {
-      // Fallback
+      Logger.log('Error accediendo a Drive API para ' + val + ': ' + e);
   }
   return 'https://drive.google.com/uc?export=view&id=' + val;
 }
