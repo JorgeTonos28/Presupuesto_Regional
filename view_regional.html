@@ -49,24 +49,32 @@
     </div>
 
     <div class="col-12">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0">
-        <div style="font-weight:800">Base de datos (filtrada) - paginada</div>
-        <div class="muted" id="basePagerInfo"></div>
+      <!-- Filtros de Provincia y Búsqueda -->
+      <div class="card" style="margin-bottom: 12px;">
+         <div class="row">
+             <div>
+                 <label>Filtrar por Provincia (Detalle abajo)</label>
+                 <select id="provinceSelect">
+                     <option value="">Cargando...</option>
+                 </select>
+             </div>
+             <div>
+                 <label>Buscar en Base de Datos</label>
+                 <input type="text" id="regionalFilter" placeholder="Escribe palabras clave (ej: 1000 curso)">
+             </div>
+         </div>
       </div>
-      <div class="row" style="margin-bottom:8px">
-        <div style="flex:0 0 auto">
-          <button class="btn" id="btnPrev">Anterior</button>
-        </div>
-        <div style="flex:0 0 auto">
-          <button class="btn" id="btnNext">Siguiente</button>
-        </div>
-      </div>
-      <div class="table-responsive">
+
+      <div id="provinceDetailContainer"></div>
+
+      <div style="font-weight:800;margin:12px 0">Base de datos Completa (Regional)</div>
+      <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
         <table>
-          <thead><tr id="baseHead"></tr></thead>
+          <thead style="position: sticky; top: 0; background: #f3f4f6; z-index: 5;"><tr id="baseHead"></tr></thead>
           <tbody id="baseBody"></tbody>
         </table>
       </div>
+      <div class="muted" id="basePagerInfo" style="margin-top: 4px;"></div>
     </div>
   </div>
 </section>

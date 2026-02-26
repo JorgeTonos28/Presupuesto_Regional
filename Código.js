@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.4
+ * Versión: 1.0.5
  ***************/
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -291,8 +291,7 @@ function apiGetRegionalDetail(payload) {
 
     const year = parseInt(payload && payload.year, 10);
     const regional = String(payload && payload.regional || '').trim();
-    const offset = Math.max(0, parseInt(payload && payload.offset, 10) || 0);
-    const limit = Math.min(200, Math.max(10, parseInt(payload && payload.limit, 10) || 50));
+    // Removed pagination params to return full dataset for client-side filtering
 
     if (!year) return fail_('Año inválido.');
     if (!regional) return fail_('Regional inválida.');
@@ -308,8 +307,8 @@ function apiGetRegionalDetail(payload) {
     // Segmentaciones de esa regional
     const segRows = listRegionalSegmentationRows_(year, regional);
 
-    // Filas base (paginadas)
-    const baseRows = listBaseRows_(year, regional, offset, limit);
+    // Filas base (todas, hasta 5000)
+    const baseRows = listBaseRows_(year, regional, 0, 5000);
 
     return ok_({
       year,

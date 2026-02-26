@@ -173,6 +173,8 @@
 
   async function loadDashboard(){
     const year = Number(document.getElementById('yearSelect').value);
+    document.getElementById('displayYear').textContent = year; // Update big year display
+
     Busy.show('Cargando dashboard…');
     try {
       const res = await callServer('apiGetDashboard', { year });
@@ -292,20 +294,19 @@
     if (cur) sel.value = cur;
   }
 
-  // Regional detail pagination
-  let REG_OFFSET = 0;
-  const REG_LIMIT = 50;
+  // Regional detail - Filter & Logic
+  let RAW_BASE_ROWS = [];
+  let RAW_BASE_COLS = [];
 
-  async function loadRegionalDetail(resetOffset){
-    if (resetOffset) REG_OFFSET = 0;
-
+  async function loadRegionalDetail(){
     const year = Number(document.getElementById('yearSelectRegional').value);
     const regional = String(document.getElementById('regionalSelect').value || '').trim();
     if (!regional) return modal('Selecciona una regional.', 'Validación');
 
     Busy.show('Cargando regional…');
     try {
-      const res = await callServer('apiGetRegionalDetail', { year, regional, offset: REG_OFFSET, limit: REG_LIMIT });
+      // Pedimos sin paginación (limit=5000 en servidor)
+      const res = await callServer('apiGetRegionalDetail', { year, regional });
       if (!res.ok) throw new Error(res.message || 'Error');
 
       document.getElementById('rBase').textContent = fmtMoney(res.data.totals.base);
@@ -313,7 +314,16 @@
       document.getElementById('rRem').textContent = fmtMoney(res.data.totals.remaining);
 
       renderRegionalSegs(res.data.segmentations || []);
-      renderBaseTable(res.data.baseTable || {});
+
+      // Store raw data for client-side filtering
+      RAW_BASE_ROWS = (res.data.baseTable || {}).rows || [];
+      RAW_BASE_COLS = (res.data.baseTable || {}).columns || [];
+
+      // Setup filters
+      setupProvinceFilter(RAW_BASE_ROWS, RAW_BASE_COLS);
+
+      // Initial Render
+      filterAndRenderBaseTable();
 
     } catch (e) {
       console.error('loadRegionalDetail error', e);
@@ -323,10 +333,118 @@
     }
   }
 
-  function pageRegional(dir){
-    const next = REG_OFFSET + (dir * REG_LIMIT);
-    REG_OFFSET = Math.max(0, next);
-    loadRegionalDetail(false);
+  document.getElementById('regionalFilter').addEventListener('keyup', () => {
+      filterAndRenderBaseTable();
+  });
+
+  document.getElementById('provinceSelect').addEventListener('change', () => {
+      renderProvinceBreakdown();
+  });
+
+  function setupProvinceFilter(rows, cols) {
+     const pIdx = cols.indexOf('Provincia'); // Ajustar si el nombre es diferente
+     const sel = document.getElementById('provinceSelect');
+     sel.innerHTML = '<option value="">-- Selecciona Provincia (Ver desglose) --</option><option value="ALL">Todas (Ver desglose completo)</option>';
+
+     if (pIdx === -1) return;
+
+     const provs = new Set();
+     rows.forEach(r => {
+         const p = String(r[pIdx] || '').trim();
+         if (p) provs.add(p);
+     });
+
+     const sorted = Array.from(provs).sort();
+     sorted.forEach(p => {
+         const opt = document.createElement('option');
+         opt.value = p;
+         opt.textContent = p;
+         sel.appendChild(opt);
+     });
+  }
+
+  function renderProvinceBreakdown() {
+      const sel = document.getElementById('provinceSelect').value;
+      const container = document.getElementById('provinceDetailContainer');
+      container.innerHTML = '';
+
+      if (!sel) return; // Nada seleccionado
+
+      const pIdx = RAW_BASE_COLS.indexOf('Provincia');
+      const presIdx = RAW_BASE_COLS.indexOf('Presupuesto');
+
+      if (pIdx === -1 || presIdx === -1) return;
+
+      const provinces = (sel === 'ALL')
+          ? Array.from(new Set(RAW_BASE_ROWS.map(r => String(r[pIdx]||'')))).sort()
+          : [sel];
+
+      provinces.forEach(prov => {
+          if (!prov) return;
+          // Filter rows
+          const rows = RAW_BASE_ROWS.filter(r => String(r[pIdx]||'') === prov);
+          if (!rows.length) return;
+
+          // Calculate total
+          let total = 0;
+          rows.forEach(r => {
+              const val = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
+              total += val;
+          });
+
+          // Create table
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.style.marginBottom = '16px';
+
+          const title = document.createElement('div');
+          title.style.fontWeight = '800';
+          title.style.marginBottom = '8px';
+          title.style.color = 'var(--primary)';
+          title.textContent = `Provincia: ${prov}`;
+
+          const tableWrap = document.createElement('div');
+          tableWrap.className = 'table-responsive';
+
+          const table = document.createElement('table');
+          const thead = document.createElement('thead');
+          thead.innerHTML = `<tr>${RAW_BASE_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
+
+          const tbody = document.createElement('tbody');
+          rows.forEach(r => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = r.map(c => `<td>${escapeHtml(c)}</td>`).join('');
+              tbody.appendChild(tr);
+          });
+
+          // Footer with total
+          const tfoot = document.createElement('tfoot');
+          tfoot.innerHTML = `<tr><td colspan="${RAW_BASE_COLS.length}" style="text-align:right; font-weight:800; background:#f9fafb;">Total: ${fmtMoney(total)}</td></tr>`;
+
+          table.appendChild(thead);
+          table.appendChild(tbody);
+          table.appendChild(tfoot);
+          tableWrap.appendChild(table);
+
+          card.appendChild(title);
+          card.appendChild(tableWrap);
+          container.appendChild(card);
+      });
+  }
+
+  function filterAndRenderBaseTable(){
+      const term = String(document.getElementById('regionalFilter').value || '').toLowerCase().trim();
+      let filtered = RAW_BASE_ROWS;
+
+      if (term) {
+          const tokens = term.split(/\s+/);
+          filtered = RAW_BASE_ROWS.filter(row => {
+             const rowStr = row.map(c => String(c)).join(' ').toLowerCase();
+             return tokens.some(t => rowStr.includes(t));
+          });
+      }
+
+      renderBaseTable({ columns: RAW_BASE_COLS, rows: filtered });
   }
 
   function renderRegionalSegs(rows){
