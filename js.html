@@ -104,12 +104,24 @@
       const signatureUrl = res.data.config && res.data.config.signatureUrl;
 
       const logoEl = document.getElementById('appLogo');
-      if (logoUrl) { logoEl.src = logoUrl; logoEl.hidden = false; }
-      else { logoEl.hidden = true; }
+      if (logoUrl) {
+          logoEl.src = logoUrl;
+          logoEl.style.width = res.data.config.logoWidth || 'auto';
+          logoEl.style.height = res.data.config.logoHeight || '40px';
+          logoEl.hidden = false;
+      } else {
+          logoEl.hidden = true;
+      }
 
       const sigEl = document.getElementById('footerSig');
-      if (signatureUrl) { sigEl.src = signatureUrl; sigEl.hidden = false; }
-      else { sigEl.hidden = true; }
+      if (signatureUrl) {
+          sigEl.src = signatureUrl;
+          sigEl.style.width = res.data.config.signatureWidth || 'auto';
+          sigEl.style.height = res.data.config.signatureHeight || '40px';
+          sigEl.hidden = false;
+      } else {
+          sigEl.hidden = true;
+      }
 
       // Roles UI
       const isAdmin = SESSION_USER.role === 'ADMIN';

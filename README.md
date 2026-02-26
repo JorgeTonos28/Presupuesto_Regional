@@ -51,6 +51,7 @@ Aplicación web desarrollada en Google Apps Script para gestionar la segmentaci�
     *   Asegurar que los archivos tengan permiso de lectura ("Cualquier usuario con el enlace").
     *   Copiar el **ID del archivo** (la parte alfanumérica de la URL).
     *   Ir a la hoja `Config` y pegar los IDs en `logo_url` y `signature_url`.
+    *   Opcionalmente, ajustar `logo_width`, `logo_height`, `signature_width`, `signature_height` (ej: `100px`, `auto`).
 6.  **Desplegar:**
     *   Clic en "Implementar" > "Nueva implementación".
     *   Tipo: "Aplicación web".

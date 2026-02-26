@@ -109,7 +109,11 @@ function apiBootstrap() {
         locale: cfg.locale || 'es-DO',
         currencyCode: cfg.currency_code || '',
         logoUrl: logoUrl,
-        signatureUrl: signatureUrl
+        signatureUrl: signatureUrl,
+        logoWidth: cfg.logo_width || 'auto',
+        logoHeight: cfg.logo_height || '40px',
+        signatureWidth: cfg.signature_width || 'auto',
+        signatureHeight: cfg.signature_height || '40px'
       }
     };
 
@@ -123,6 +127,7 @@ function apiBootstrap() {
 function apiGetDashboard(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const year = parseInt(payload && payload.year, 10);
@@ -168,6 +173,7 @@ function apiGetDashboard(payload) {
 function apiCreateSegmentation(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -232,6 +238,7 @@ function apiCreateSegmentation(payload) {
 function apiDeleteSegmentation(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -279,6 +286,7 @@ function apiDeleteSegmentation(payload) {
 function apiGetRegionalDetail(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const year = parseInt(payload && payload.year, 10);
@@ -319,6 +327,7 @@ function apiGetRegionalDetail(payload) {
 function apiGetSegmentationDetail(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const segId = String(payload && payload.segId || '').trim();
@@ -364,6 +373,7 @@ function apiGetSegmentationDetail(payload) {
 function apiListUsers() {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -391,6 +401,7 @@ function apiListUsers() {
 function apiUpsertUser(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -460,7 +471,7 @@ function getSessionUser_() {
     return ok_(user);
   } catch (err) {
     Logger.log('getSessionUser_ error: ' + err);
-    return fail_('Error validando sesión: ' + err.message);
+    return fail_('Error validando sesión: ' + (err.message || String(err)));
   }
 }
 
@@ -502,7 +513,11 @@ function ensureConfigDefaults_(ss) {
     ['locale', 'es-DO'],
     ['currency_code', ''],       // ej: DOP (opcional)
     ['logo_url', ''],
-    ['signature_url', '']
+    ['signature_url', ''],
+    ['logo_width', 'auto'],
+    ['logo_height', '40px'],
+    ['signature_width', 'auto'],
+    ['signature_height', '40px']
   ];
   defaults.forEach(([k, v]) => {
     if (existing[k] === undefined) sh.appendRow([k, v]);
