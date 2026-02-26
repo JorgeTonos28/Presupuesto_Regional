@@ -10,6 +10,7 @@
     --card:#f9fafb;
   }
   *{ box-sizing:border-box; }
+  html { height: 100%; }
   body{
     margin:0;
     font-family: Arial, sans-serif;
@@ -151,7 +152,9 @@
     background:rgba(17,24,39,.45);
     z-index:50;
   }
-  #overlay { z-index: 100; }
+  #modal, #modalDetail, #modalSegmentation {
+    z-index: 200 !important;
+  }
   .overlay-card, .modal-card{
     width:min(520px, 92vw);
     background:white;

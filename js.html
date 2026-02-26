@@ -108,7 +108,7 @@
       document.getElementById('segFormWrap').hidden = !isAdmin;
       document.getElementById('segLabelWrap').hidden = !isAdmin;
       document.getElementById('segBtnWrap').hidden = !isAdmin;
-      document.getElementById('thActions').hidden = !isAdmin;
+      document.getElementById('thActions').hidden = false;
 
       // Fill years selects
       fillSelect('yearSelect', YEARS, CURRENT_YEAR);
@@ -203,10 +203,10 @@
         <td>${Number(r.pct || 0).toFixed(2)}%</td>
         <td>${fmtMoney(r.totalSegmented || 0)}</td>
         <td>${escapeHtml(r.createdBy || '')}</td>
-        ${isAdmin ? `<td>
+        <td>
            <button class="btn btn-primary" onclick="showSegmentationDetail('${escapeHtml(r.segId)}')">Ver</button>
-           <button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button>
-        </td>` : ''}
+           ${isAdmin ? `<button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button>` : ''}
+        </td>
       `;
       tb.appendChild(tr);
     });

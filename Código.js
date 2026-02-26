@@ -100,8 +100,8 @@ function apiBootstrap() {
       config: {
         locale: cfg.locale || 'es-DO',
         currencyCode: cfg.currency_code || '',
-        logoUrl: cfg.logo_url || '',
-        signatureUrl: cfg.signature_url || ''
+        logoUrl: normalizeDriveUrl_(cfg.logo_url),
+        signatureUrl: normalizeDriveUrl_(cfg.signature_url)
       }
     });
   } catch (err) {
@@ -838,4 +838,14 @@ function ok_(data) {
 }
 function fail_(message) {
   return { ok: false, data: null, message: message || 'Error' };
+}
+
+function normalizeDriveUrl_(value) {
+  if (!value) return '';
+  const val = String(value).trim();
+  if (!val) return '';
+  // Si ya es URL, devolver tal cual
+  if (/^https?:\/\//i.test(val)) return val;
+  // Asumir que es un ID de archivo de Drive
+  return 'https://drive.google.com/uc?export=view&id=' + val;
 }
