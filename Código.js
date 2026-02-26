@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.3
+ * Versión: 1.0.4
  ***************/
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -388,7 +388,7 @@ function apiListUsers() {
       name: String(r[map.name] || ''),
       role: String(r[map.role] || ''),
       status: String(r[map.status] || ''),
-      createdAt: r[map.createdAt] || ''
+      createdAt: safeDate_(r[map.createdAt])
     })).filter(u => u.email);
 
     return ok_(users);
@@ -701,7 +701,12 @@ function listSegmentations_(year) {
 
   // Más reciente primero
   list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return list;
+
+  // Convert Dates to strings for safe serialization
+  return list.map(item => ({
+    ...item,
+    createdAt: safeDate_(item.createdAt)
+  }));
 }
 
 function listRegionalSegmentationRows_(year, regional) {
@@ -763,7 +768,12 @@ function listRegionalSegmentationRows_(year, regional) {
   });
 
   out.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  return out;
+
+  // Convert Dates to strings
+  return out.map(item => ({
+    ...item,
+    createdAt: safeDate_(item.createdAt)
+  }));
 }
 
 function listBaseRows_(year, regional, offset, limit) {
@@ -891,4 +901,11 @@ function normalizeDriveUrl_(value) {
       Logger.log('Error accediendo a Drive API para ' + val + ': ' + e);
   }
   return 'https://drive.google.com/uc?export=view&id=' + val;
+}
+
+function safeDate_(val) {
+  if (val instanceof Date) return val.toISOString();
+  // Si ya es string, devolver
+  if (typeof val === 'string') return val;
+  return '';
 }
