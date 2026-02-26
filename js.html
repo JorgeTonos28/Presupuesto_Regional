@@ -46,8 +46,17 @@
   function callServer(fn, payload){
     return new Promise((resolve, reject) => {
       google.script.run
-        .withSuccessHandler(res => resolve(res))
-        .withFailureHandler(err => reject(err))
+        .withSuccessHandler(res => {
+          if (res === null || res === undefined) {
+             console.error(`callServer[${fn}] returned null/undefined`, res);
+             return reject(new Error(`Respuesta vacía del servidor en ${fn}.`));
+          }
+          resolve(res);
+        })
+        .withFailureHandler(err => {
+          console.error(`callServer[${fn}] failure`, err);
+          reject(err);
+        })
         [fn](payload);
     });
   }
@@ -83,7 +92,6 @@
     Busy.show('Inicializando…');
     try {
       const res = await callServer('apiBootstrap');
-      if (!res) throw new Error('Respuesta vacía del servidor (revisar logs).');
       if (!res.ok) throw new Error(res.message || 'No autorizado');
 
       YEARS = res.data.years || [];
