@@ -8,7 +8,7 @@
         </div>
 
         <div id="segFormWrap" hidden>
-          <label>Porcentaje a segmentar (sobre el SOBRANTE)</label>
+          <label>Porcentaje a segmentar (sobre el DISPONIBLE)</label>
           <input id="pctInput" type="number" min="0.01" max="100" step="0.01" placeholder="Ej: 10" />
         </div>
 
@@ -22,7 +22,7 @@
         </div>
       </div>
       <div class="muted" style="margin-top:8px">
-        Nota: cada segmentación se calcula sobre lo que queda (sobrante) y se acumula hasta llegar a 100%.
+        Nota: cada segmentación se calcula sobre lo que queda (disponible) y se acumula hasta llegar a 100%.
       </div>
     </div>
 
@@ -31,11 +31,11 @@
       <div style="font-size:22px;font-weight:800" id="tBase">—</div>
     </div>
     <div class="col-4 card">
-      <div class="muted">Total Segmentado</div>
+      <div class="muted">Total Presupuestado</div>
       <div style="font-size:22px;font-weight:800" id="tSeg">—</div>
     </div>
     <div class="col-4 card">
-      <div class="muted">Total Sobrante</div>
+      <div class="muted">Total Disponible</div>
       <div style="font-size:22px;font-weight:800" id="tRem">—</div>
     </div>
 
@@ -46,8 +46,8 @@
           <tr>
             <th>Regional</th>
             <th>Base</th>
-            <th>Segmentado</th>
-            <th>Sobrante</th>
+            <th>Presupuestado</th>
+            <th>Disponible</th>
           </tr>
         </thead>
         <tbody id="tblRegionals"></tbody>
@@ -62,7 +62,7 @@
             <th>Fecha</th>
             <th>Etiqueta</th>
             <th>%</th>
-            <th>Total segmentado</th>
+            <th>Total presupuestado</th>
             <th>Creado por</th>
             <th id="thActions" hidden>Acciones</th>
           </tr>
