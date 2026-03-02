@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.1
+ * Versión: 1.1.0
  ***************/
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.1.0';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -17,8 +17,17 @@ function doGet(e) {
   try {
     const userRes = getSessionUser_();
     if (!userRes.ok) {
+      const cfg = getConfig_();
       const denied = HtmlService.createTemplateFromFile('Denied');
       denied.message = userRes.message || 'Acceso denegado.';
+      denied.APP_VERSION = APP_VERSION;
+      denied.signatureUrl = normalizeDriveUrl_(cfg.signature_url);
+      denied.signatureWidth = cfg.signature_width || 'auto';
+      denied.signatureHeight = cfg.signature_height || '40px';
+      denied.adminName = cfg.admin_contact_name || '';
+      denied.adminEmail = cfg.admin_contact_email || '';
+      denied.adminExt = cfg.admin_contact_ext || '';
+
       return denied.evaluate()
         .setTitle('Acceso denegado')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -89,28 +98,45 @@ function setup() {
 function apiBootstrap() {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const cfg = getConfig_();
     const years = listYears_();
-    return ok_({
+
+    // Intentar normalizar URLs
+    let logoUrl = '';
+    let signatureUrl = '';
+    try { logoUrl = normalizeDriveUrl_(cfg.logo_url); } catch(e) { Logger.log('Logo err: ' + e); }
+    try { signatureUrl = normalizeDriveUrl_(cfg.signature_url); } catch(e) { Logger.log('Sig err: ' + e); }
+
+    const response = {
       appVersion: APP_VERSION,
       user: userRes.data,
       years,
       config: {
         locale: cfg.locale || 'es-DO',
         currencyCode: cfg.currency_code || '',
+        logoUrl: logoUrl,
+        signatureUrl: signatureUrl,
+        logoWidth: cfg.logo_width || 'auto',
+        logoHeight: cfg.logo_height || '40px',
+        signatureWidth: cfg.signature_width || 'auto',
+        signatureHeight: cfg.signature_height || '40px'
       }
-    });
+    };
+
+    return ok_(response);
   } catch (err) {
     Logger.log('apiBootstrap error: ' + err);
-    return fail_('No se pudo inicializar la app: ' + err.message);
+    return fail_('No se pudo inicializar la app: ' + (err.message || String(err)));
   }
 }
 
 function apiGetDashboard(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const year = parseInt(payload && payload.year, 10);
@@ -156,6 +182,7 @@ function apiGetDashboard(payload) {
 function apiCreateSegmentation(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -209,6 +236,7 @@ function apiCreateSegmentation(payload) {
     // Invalida cache
     CacheService.getScriptCache().remove('dash_' + year);
 
+    SpreadsheetApp.flush();
     return ok_({ segId, year });
   } catch (err) {
     Logger.log('apiCreateSegmentation error: ' + err);
@@ -219,6 +247,7 @@ function apiCreateSegmentation(payload) {
 function apiDeleteSegmentation(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -255,6 +284,7 @@ function apiDeleteSegmentation(payload) {
     }
 
     CacheService.getScriptCache().remove('dash_' + year);
+    SpreadsheetApp.flush();
     return ok_({ segId, year });
   } catch (err) {
     Logger.log('apiDeleteSegmentation error: ' + err);
@@ -265,12 +295,12 @@ function apiDeleteSegmentation(payload) {
 function apiGetRegionalDetail(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
 
     const year = parseInt(payload && payload.year, 10);
     const regional = String(payload && payload.regional || '').trim();
-    const offset = Math.max(0, parseInt(payload && payload.offset, 10) || 0);
-    const limit = Math.min(200, Math.max(10, parseInt(payload && payload.limit, 10) || 50));
+    // Removed pagination params to return full dataset for client-side filtering
 
     if (!year) return fail_('Año inválido.');
     if (!regional) return fail_('Regional inválida.');
@@ -286,8 +316,8 @@ function apiGetRegionalDetail(payload) {
     // Segmentaciones de esa regional
     const segRows = listRegionalSegmentationRows_(year, regional);
 
-    // Filas base (paginadas)
-    const baseRows = listBaseRows_(year, regional, offset, limit);
+    // Filas base (todas, hasta 5000)
+    const baseRows = listBaseRows_(year, regional, 0, 5000);
 
     return ok_({
       year,
@@ -302,12 +332,56 @@ function apiGetRegionalDetail(payload) {
   }
 }
 
+function apiGetSegmentationDetail(payload) {
+  try {
+    const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
+    if (!userRes.ok) return userRes;
+
+    const segId = String(payload && payload.segId || '').trim();
+    if (!segId) return fail_('segId inválido.');
+
+    const ss = SpreadsheetApp.getActive();
+    const shDet = ss.getSheetByName(SHEET_SEG_D);
+    const map = getHeaderMap_(shDet);
+    const last = shDet.getLastRow();
+    if (last < 2) return ok_({ rows: [], total: 0 });
+
+    const values = shDet.getRange(2, 1, last - 1, shDet.getLastColumn()).getValues();
+    const rows = [];
+    let total = 0;
+
+    values.forEach(r => {
+        const id = String(r[map.segId] || '');
+        if (id !== segId) return;
+
+        const status = String(r[map.status] || '');
+        if (status !== 'ACTIVE') return;
+
+        const regional = String(r[map.regional] || '');
+        const amount = toNumber_(r[map.amountSegmented]);
+
+        rows.push({ regional, amount });
+        total = round2_(total + amount);
+    });
+
+    // Sort by regional name
+    rows.sort((a, b) => a.regional.localeCompare(b.regional));
+
+    return ok_({ rows, total });
+  } catch (err) {
+      Logger.log('apiGetSegmentationDetail error: ' + err);
+      return fail_('Error: ' + err.message);
+  }
+}
+
 /***************
  * ADMIN: Usuarios
  ***************/
 function apiListUsers() {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -322,7 +396,7 @@ function apiListUsers() {
       name: String(r[map.name] || ''),
       role: String(r[map.role] || ''),
       status: String(r[map.status] || ''),
-      createdAt: r[map.createdAt] || ''
+      createdAt: safeDate_(r[map.createdAt])
     })).filter(u => u.email);
 
     return ok_(users);
@@ -335,6 +409,7 @@ function apiListUsers() {
 function apiUpsertUser(payload) {
   try {
     const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
     if (!userRes.ok) return userRes;
     requireAdmin_(userRes.data);
 
@@ -357,20 +432,96 @@ function apiUpsertUser(payload) {
 
     const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_USERS);
     const map = getHeaderMap_(sh);
-    const row = findRowByValue_(sh, map.email, email);
+    const lastRow = sh.getLastRow();
 
-    if (row) {
-      sh.getRange(row, map.name + 1).setValue(name);
-      sh.getRange(row, map.role + 1).setValue(role);
-      sh.getRange(row, map.status + 1).setValue(status);
+    // Validar Reglas de Administración
+    let adminCount = 0;
+    let targetIsCurrentAdmin = false;
+    let targetRow = 0;
+
+    if (lastRow >= 2) {
+      const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+      vals.forEach((r, i) => {
+        const rowEmail = String(r[map.email] || '').trim().toLowerCase();
+        const rowRole = String(r[map.role] || '');
+        const rowStatus = String(r[map.status] || '');
+
+        if (rowEmail === email) {
+          targetRow = i + 2;
+          if (rowRole === ROLE_ADMIN && rowStatus === 'ACTIVE') {
+            targetIsCurrentAdmin = true;
+          }
+        } else {
+          if (rowRole === ROLE_ADMIN && rowStatus === 'ACTIVE') {
+            adminCount++;
+          }
+        }
+      });
+    }
+
+    // Regla 1: No más de 1 administrador
+    if (role === ROLE_ADMIN && status === 'ACTIVE') {
+       if (adminCount >= 1 && !targetIsCurrentAdmin) {
+           return fail_('Ya existe un Administrador activo. Solo puede haber uno. Si deseas traspasar la administración, utiliza la opción "Traspasar Administración".');
+       }
+    }
+
+    // Regla 2: No dejar el sistema sin administrador
+    if (targetIsCurrentAdmin && (role !== ROLE_ADMIN || status !== 'ACTIVE')) {
+       if (adminCount === 0) {
+           return fail_('No puedes quitarte el rol de Administrador o inactivarte siendo el único Administrador. Debes traspasar la administración a otro usuario primero utilizando la opción "Traspasar Administración".');
+       }
+    }
+
+    if (targetRow) {
+      sh.getRange(targetRow, map.name + 1).setValue(name);
+      sh.getRange(targetRow, map.role + 1).setValue(role);
+      sh.getRange(targetRow, map.status + 1).setValue(status);
     } else {
       sh.appendRow([email, name, role, status, new Date()]);
     }
 
+    SpreadsheetApp.flush();
     return ok_({ email });
   } catch (err) {
     Logger.log('apiUpsertUser error: ' + err);
     return fail_('No se pudo guardar usuario: ' + err.message);
+  }
+}
+
+function apiTransferAdmin(payload) {
+  try {
+    const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
+    if (!userRes.ok) return userRes;
+    requireAdmin_(userRes.data);
+
+    const newAdminEmail = String(payload && payload.email || '').trim().toLowerCase();
+    if (!newAdminEmail) return fail_('Debe seleccionar un usuario válido.');
+
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_USERS);
+    const map = getHeaderMap_(sh);
+
+    const newAdminRow = findRowByValue_(sh, map.email, newAdminEmail);
+    if (!newAdminRow) return fail_('El usuario seleccionado no existe.');
+
+    const currentAdminEmail = userRes.data.email;
+    const currentAdminRow = findRowByValue_(sh, map.email, currentAdminEmail);
+    if (!currentAdminRow) return fail_('Tu usuario no fue encontrado.');
+
+    // Verificar que el nuevo admin no sea el mismo
+    if (newAdminEmail === currentAdminEmail) return fail_('Ya eres el administrador.');
+
+    // Traspasar
+    sh.getRange(currentAdminRow, map.role + 1).setValue(ROLE_COLAB);
+    sh.getRange(newAdminRow, map.role + 1).setValue(ROLE_ADMIN);
+    sh.getRange(newAdminRow, map.status + 1).setValue('ACTIVE'); // Asegurar que quede activo
+
+    SpreadsheetApp.flush();
+    return ok_({ success: true });
+  } catch (err) {
+    Logger.log('apiTransferAdmin error: ' + err);
+    return fail_('No se pudo traspasar la administración: ' + err.message);
   }
 }
 
@@ -403,7 +554,7 @@ function getSessionUser_() {
     return ok_(user);
   } catch (err) {
     Logger.log('getSessionUser_ error: ' + err);
-    return fail_('Error validando sesión: ' + err.message);
+    return fail_('Error validando sesión: ' + (err.message || String(err)));
   }
 }
 
@@ -443,7 +594,16 @@ function ensureConfigDefaults_(ss) {
   const defaults = [
     ['allowed_domain', ''],     // ej: midominio.gob.do
     ['locale', 'es-DO'],
-    ['currency_code', '']       // ej: DOP (opcional)
+    ['currency_code', ''],       // ej: DOP (opcional)
+    ['logo_url', ''],
+    ['signature_url', ''],
+    ['logo_width', 'auto'],
+    ['logo_height', '40px'],
+    ['signature_width', 'auto'],
+    ['signature_height', '40px'],
+    ['admin_contact_name', ''],
+    ['admin_contact_email', ''],
+    ['admin_contact_ext', '']
   ];
   defaults.forEach(([k, v]) => {
     if (existing[k] === undefined) sh.appendRow([k, v]);
@@ -627,7 +787,12 @@ function listSegmentations_(year) {
 
   // Más reciente primero
   list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return list;
+
+  // Convert Dates to strings for safe serialization
+  return list.map(item => ({
+    ...item,
+    createdAt: safeDate_(item.createdAt)
+  }));
 }
 
 function listRegionalSegmentationRows_(year, regional) {
@@ -689,7 +854,12 @@ function listRegionalSegmentationRows_(year, regional) {
   });
 
   out.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  return out;
+
+  // Convert Dates to strings
+  return out.map(item => ({
+    ...item,
+    createdAt: safeDate_(item.createdAt)
+  }));
 }
 
 function listBaseRows_(year, regional, offset, limit) {
@@ -789,4 +959,39 @@ function ok_(data) {
 }
 function fail_(message) {
   return { ok: false, data: null, message: message || 'Error' };
+}
+
+function normalizeDriveUrl_(value) {
+  if (!value) return '';
+  const val = String(value).trim();
+  if (!val) return '';
+  // Si ya es URL, devolver tal cual
+  if (/^https?:\/\//i.test(val)) return val;
+  // Asumir que es un ID de archivo de Drive
+  // Si la API Drive está habilitada, usarla para obtener webContentLink o thumbnailLink
+  try {
+      if (typeof Drive !== 'undefined') {
+          // Intentar obtener el archivo
+          const file = Drive.Files.get(val);
+          if (file) {
+              if (file.thumbnailLink) {
+                 // Hack para mejorar la resolución del thumbnailLink
+                 return file.thumbnailLink.replace('=s220', '=s1000');
+              }
+              if (file.webContentLink) {
+                 return file.webContentLink;
+              }
+          }
+      }
+  } catch (e) {
+      Logger.log('Error accediendo a Drive API para ' + val + ': ' + e);
+  }
+  return 'https://drive.google.com/uc?export=view&id=' + val;
+}
+
+function safeDate_(val) {
+  if (val instanceof Date) return val.toISOString();
+  // Si ya es string, devolver
+  if (typeof val === 'string') return val;
+  return '';
 }

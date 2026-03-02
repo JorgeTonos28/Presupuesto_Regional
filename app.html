@@ -1,7 +1,10 @@
 <div class="topbar">
-  <!-- Configurar URL del Logo aquí -->
-  <img src="https://via.placeholder.com/40?text=Logo" alt="Logo" class="brand-logo">
-  <div class="brand">
+  <div class="brand-left">
+     <!-- Configurar URL del Logo aquí -->
+     <img id="appLogo" alt="Logo" class="brand-logo" hidden>
+  </div>
+
+  <div class="brand-center">
     <div class="brand-title">Segmentación de Presupuesto</div>
     <div class="brand-subtitle">Dashboard por año • Segmentación sobre disponible</div>
   </div>
@@ -14,7 +17,7 @@
 </div>
 
 <!-- Overlay de carga -->
-<div id="overlay" class="overlay" hidden style="display:none">
+<div id="overlay" class="overlay" hidden>
   <div class="overlay-card">
     <div class="spinner"></div>
     <div id="overlayText">Cargando…</div>
@@ -22,13 +25,60 @@
 </div>
 
 <!-- Modal -->
-<div id="modal" class="overlay" hidden style="display:none">
+<div id="modal" class="overlay" hidden>
   <div class="modal-card">
     <div class="modal-title" id="mTitle">Mensaje</div>
     <div class="modal-msg" id="mMsg"></div>
     <div class="modal-actions">
       <button class="btn" id="mCancel" hidden>Cancelar</button>
       <button class="btn btn-primary" id="mOk">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Transferir Admin -->
+<div id="modalTransfer" class="overlay" hidden style="z-index: 200 !important;">
+  <div class="modal-card">
+    <div class="modal-title">Traspasar Administración</div>
+    <div class="modal-msg">
+      <p style="margin-bottom: 12px; font-size: 14px; color: var(--muted);">
+        Selecciona un usuario colaborador para convertirlo en Administrador. Tu usuario pasará a ser colaborador inmediatamente y perderás los permisos de administración.
+      </p>
+      <label>Nuevo Administrador</label>
+      <select id="transferAdminSelect"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('modalTransfer').hidden = true">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmTransfer">Confirmar Traspaso</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detalle Segmentación -->
+<div id="modalDetail" class="overlay" hidden>
+  <div class="modal-card" style="width: min(800px, 95vw);">
+    <div class="modal-title">Detalle de Segmentación por Regional</div>
+    <div class="modal-msg" style="max-height: 60vh; overflow-y: auto; white-space: normal;">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Regional</th>
+              <th>Monto Segmentado</th>
+            </tr>
+          </thead>
+          <tbody id="tblSegDetailBody"></tbody>
+          <tfoot>
+            <tr>
+              <th>Total</th>
+              <th id="tSegDetailTotal"></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="document.getElementById('modalDetail').hidden = true">Cerrar</button>
     </div>
   </div>
 </div>

@@ -46,8 +46,17 @@
   function callServer(fn, payload){
     return new Promise((resolve, reject) => {
       google.script.run
-        .withSuccessHandler(res => resolve(res))
-        .withFailureHandler(err => reject(err))
+        .withSuccessHandler(res => {
+          if (res === null || res === undefined) {
+             console.error(`callServer[${fn}] returned null/undefined`, res);
+             return reject(new Error(`Respuesta vacía del servidor en ${fn}.`));
+          }
+          resolve(res);
+        })
+        .withFailureHandler(err => {
+          console.error(`callServer[${fn}] failure`, err);
+          reject(err);
+        })
         [fn](payload);
     });
   }
@@ -91,13 +100,36 @@
       APP_LOCALE = (res.data.config && res.data.config.locale) || 'es-DO';
       APP_CURRENCY = (res.data.config && res.data.config.currencyCode) || '';
 
+      const logoUrl = res.data.config && res.data.config.logoUrl;
+      const signatureUrl = res.data.config && res.data.config.signatureUrl;
+
+      const logoEl = document.getElementById('appLogo');
+      if (logoUrl) {
+          logoEl.src = logoUrl;
+          logoEl.style.width = res.data.config.logoWidth || 'auto';
+          logoEl.style.height = res.data.config.logoHeight || '40px';
+          logoEl.hidden = false;
+      } else {
+          logoEl.hidden = true;
+      }
+
+      const sigEl = document.getElementById('footerSig');
+      if (signatureUrl) {
+          sigEl.src = signatureUrl;
+          sigEl.style.width = res.data.config.signatureWidth || 'auto';
+          sigEl.style.height = res.data.config.signatureHeight || '40px';
+          sigEl.hidden = false;
+      } else {
+          sigEl.hidden = true;
+      }
+
       // Roles UI
       const isAdmin = SESSION_USER.role === 'ADMIN';
       document.getElementById('navAdmin').hidden = !isAdmin;
       document.getElementById('segFormWrap').hidden = !isAdmin;
       document.getElementById('segLabelWrap').hidden = !isAdmin;
       document.getElementById('segBtnWrap').hidden = !isAdmin;
-      document.getElementById('thActions').hidden = !isAdmin;
+      document.getElementById('thActions').hidden = false;
 
       // Fill years selects
       fillSelect('yearSelect', YEARS, CURRENT_YEAR);
@@ -112,10 +144,13 @@
       document.getElementById('btnSegmentar').onclick = () => onSegmentar();
 
       document.getElementById('btnLoadRegional').onclick = () => loadRegionalDetail(true);
-      document.getElementById('btnPrev').onclick = () => pageRegional(-1);
-      document.getElementById('btnNext').onclick = () => pageRegional(+1);
+      // document.getElementById('btnPrev').onclick = () => pageRegional(-1);
+      // document.getElementById('btnNext').onclick = () => pageRegional(+1);
 
       document.getElementById('btnSaveUser').onclick = () => saveUser();
+
+      document.getElementById('btnTransferAdminModal').onclick = () => openTransferModal();
+      document.getElementById('btnConfirmTransfer').onclick = () => confirmTransferAdmin();
 
       // Inicial
       showView('viewDashboardSection');
@@ -141,6 +176,8 @@
 
   async function loadDashboard(){
     const year = Number(document.getElementById('yearSelect').value);
+    document.getElementById('displayYear').textContent = year; // Update big year display
+
     Busy.show('Cargando dashboard…');
     try {
       const res = await callServer('apiGetDashboard', { year });
@@ -192,7 +229,10 @@
         <td>${Number(r.pct || 0).toFixed(2)}%</td>
         <td>${fmtMoney(r.totalSegmented || 0)}</td>
         <td>${escapeHtml(r.createdBy || '')}</td>
-        ${isAdmin ? `<td><button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button></td>` : ''}
+        <td>
+           <button class="btn btn-primary" onclick="showSegmentationDetail('${escapeHtml(r.segId)}')">Ver</button>
+           ${isAdmin ? `<button class="btn btn-danger" data-id="${escapeHtml(r.segId)}">Eliminar</button>` : ''}
+        </td>
       `;
       tb.appendChild(tr);
     });
@@ -224,8 +264,13 @@
     const pct = Number(document.getElementById('pctInput').value);
     const label = String(document.getElementById('labelInput').value || '').trim();
 
-    if (!(pct > 0 && pct <= 100)) {
-      await modal('Porcentaje debe ser > 0 y <= 100.', 'Validación');
+    if (pct <= 0 || pct > 100) {
+      await modal('El porcentaje a segmentar debe ser mayor a 0 y menor o igual a 100.', 'Validación');
+      return;
+    }
+
+    if (!label) {
+      await modal('Debes ingresar una Etiqueta para la segmentación.', 'Validación');
       return;
     }
 
@@ -257,20 +302,19 @@
     if (cur) sel.value = cur;
   }
 
-  // Regional detail pagination
-  let REG_OFFSET = 0;
-  const REG_LIMIT = 50;
+  // Regional detail - Filter & Logic
+  let RAW_BASE_ROWS = [];
+  let RAW_BASE_COLS = [];
 
-  async function loadRegionalDetail(resetOffset){
-    if (resetOffset) REG_OFFSET = 0;
-
+  async function loadRegionalDetail(){
     const year = Number(document.getElementById('yearSelectRegional').value);
     const regional = String(document.getElementById('regionalSelect').value || '').trim();
     if (!regional) return modal('Selecciona una regional.', 'Validación');
 
     Busy.show('Cargando regional…');
     try {
-      const res = await callServer('apiGetRegionalDetail', { year, regional, offset: REG_OFFSET, limit: REG_LIMIT });
+      // Pedimos sin paginación (limit=5000 en servidor)
+      const res = await callServer('apiGetRegionalDetail', { year, regional });
       if (!res.ok) throw new Error(res.message || 'Error');
 
       document.getElementById('rBase').textContent = fmtMoney(res.data.totals.base);
@@ -278,19 +322,143 @@
       document.getElementById('rRem').textContent = fmtMoney(res.data.totals.remaining);
 
       renderRegionalSegs(res.data.segmentations || []);
-      renderBaseTable(res.data.baseTable || {});
+
+      // Store raw data for client-side filtering
+      RAW_BASE_ROWS = (res.data.baseTable || {}).rows || [];
+      RAW_BASE_COLS = (res.data.baseTable || {}).columns || [];
+
+      // Setup filters
+      setupProvinceFilter(RAW_BASE_ROWS, RAW_BASE_COLS);
+
+      // Initial Render
+      filterAndRenderBaseTable();
 
     } catch (e) {
+      console.error('loadRegionalDetail error', e);
       await modal(String(e.message || e), 'Error');
     } finally {
       Busy.hide();
     }
   }
 
-  function pageRegional(dir){
-    const next = REG_OFFSET + (dir * REG_LIMIT);
-    REG_OFFSET = Math.max(0, next);
-    loadRegionalDetail(false);
+  document.getElementById('regionalFilter').addEventListener('keyup', () => {
+      filterAndRenderBaseTable();
+  });
+
+  document.getElementById('provinceSelect').addEventListener('change', () => {
+      renderProvinceBreakdown();
+  });
+
+  function setupProvinceFilter(rows, cols) {
+     const pIdx = cols.indexOf('Provincia'); // Ajustar si el nombre es diferente
+     const sel = document.getElementById('provinceSelect');
+     sel.innerHTML = '<option value="">-- Selecciona Provincia (Ver desglose) --</option><option value="ALL">Todas (Ver desglose completo)</option>';
+
+     if (pIdx === -1) return;
+
+     const provs = new Set();
+     rows.forEach(r => {
+         const p = String(r[pIdx] || '').trim();
+         if (p) provs.add(p);
+     });
+
+     const sorted = Array.from(provs).sort();
+     sorted.forEach(p => {
+         const opt = document.createElement('option');
+         opt.value = p;
+         opt.textContent = p;
+         sel.appendChild(opt);
+     });
+  }
+
+  function renderProvinceBreakdown() {
+      const sel = document.getElementById('provinceSelect').value;
+      const container = document.getElementById('provinceDetailContainer');
+      container.innerHTML = '';
+
+      if (!sel) return; // Nada seleccionado
+
+      const pIdx = RAW_BASE_COLS.indexOf('Provincia');
+      const presIdx = RAW_BASE_COLS.indexOf('Presupuesto');
+
+      if (pIdx === -1 || presIdx === -1) return;
+
+      const provinces = (sel === 'ALL')
+          ? Array.from(new Set(RAW_BASE_ROWS.map(r => String(r[pIdx]||'')))).sort()
+          : [sel];
+
+      provinces.forEach(prov => {
+          if (!prov) return;
+          // Filter rows
+          const rows = RAW_BASE_ROWS.filter(r => String(r[pIdx]||'') === prov);
+          if (!rows.length) return;
+
+          // Calculate total
+          let total = 0;
+          rows.forEach(r => {
+              const val = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
+              total += val;
+          });
+
+          // Create table
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.style.marginBottom = '16px';
+
+          const title = document.createElement('div');
+          title.style.fontWeight = '800';
+          title.style.marginBottom = '8px';
+          title.style.color = 'var(--primary)';
+          title.textContent = `Provincia: ${prov}`;
+
+          const tableWrap = document.createElement('div');
+          tableWrap.className = 'table-responsive';
+
+          const table = document.createElement('table');
+          const thead = document.createElement('thead');
+          thead.innerHTML = `<tr>${RAW_BASE_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
+
+          const tbody = document.createElement('tbody');
+          rows.forEach(r => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = r.map((c, i) => {
+                  if (i === presIdx) {
+                      const val = typeof c === 'number' ? c : parseFloat(String(c).replace(/[^0-9.-]/g,'')) || 0;
+                      return `<td>${fmtMoney(val)}</td>`;
+                  }
+                  return `<td>${escapeHtml(c)}</td>`;
+              }).join('');
+              tbody.appendChild(tr);
+          });
+
+          // Footer with total
+          const tfoot = document.createElement('tfoot');
+          tfoot.innerHTML = `<tr><td colspan="${RAW_BASE_COLS.length}" style="text-align:right; font-weight:800; background:#f9fafb;">Total: ${fmtMoney(total)}</td></tr>`;
+
+          table.appendChild(thead);
+          table.appendChild(tbody);
+          table.appendChild(tfoot);
+          tableWrap.appendChild(table);
+
+          card.appendChild(title);
+          card.appendChild(tableWrap);
+          container.appendChild(card);
+      });
+  }
+
+  function filterAndRenderBaseTable(){
+      const term = String(document.getElementById('regionalFilter').value || '').toLowerCase().trim();
+      let filtered = RAW_BASE_ROWS;
+
+      if (term) {
+          const tokens = term.split(/\s+/);
+          filtered = RAW_BASE_ROWS.filter(row => {
+             const rowStr = row.map(c => String(c)).join(' ').toLowerCase();
+             return tokens.some(t => rowStr.includes(t));
+          });
+      }
+
+      renderBaseTable({ columns: RAW_BASE_COLS, rows: filtered });
   }
 
   function renderRegionalSegs(rows){
@@ -321,6 +489,8 @@
     body.innerHTML = '';
 
     const cols = t.columns || [];
+    const presIdx = cols.findIndex(c => String(c).trim() === 'Presupuesto');
+
     cols.forEach(c => {
       const th = document.createElement('th');
       th.textContent = c;
@@ -331,27 +501,36 @@
       const tr = document.createElement('tr');
       cols.forEach((_, idx) => {
         const td = document.createElement('td');
-        td.textContent = r[idx] === null || r[idx] === undefined ? '' : String(r[idx]);
+        const rawVal = r[idx] === null || r[idx] === undefined ? '' : r[idx];
+
+        if (idx === presIdx) {
+            const numVal = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal).replace(/[^0-9.-]/g,'')) || 0;
+            td.textContent = fmtMoney(numVal);
+        } else {
+            td.textContent = String(rawVal);
+        }
+
         tr.appendChild(td);
       });
       body.appendChild(tr);
     });
 
-    const total = t.total || 0;
-    const from = (t.offset || 0) + 1;
-    const to = Math.min((t.offset || 0) + (t.limit || 0), total);
-    info.textContent = total ? `Mostrando ${from}-${to} de ${total}` : 'Sin registros';
+    const total = (t.rows || []).length;
+    info.textContent = total ? `Total de registros: ${total}` : 'Sin registros';
   }
 
+  let ADMIN_USER_LIST = [];
   async function loadUsers(){
     if (SESSION_USER.role !== 'ADMIN') return;
     Busy.show('Cargando usuarios…');
     try {
       const res = await callServer('apiListUsers');
       if (!res.ok) throw new Error(res.message || 'Error');
+
+      ADMIN_USER_LIST = res.data || [];
       const tb = document.getElementById('tblUsers');
       tb.innerHTML = '';
-      res.data.forEach(u => {
+      ADMIN_USER_LIST.forEach(u => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(u.email)}</td>
@@ -386,6 +565,77 @@
       await loadUsers();
       await modal('Usuario guardado.', 'OK');
     } catch (e) {
+      console.error('saveUser error', e);
+      await modal(String(e.message || e), 'Error');
+    } finally {
+      Busy.hide();
+    }
+  }
+
+  function openTransferModal() {
+      const sel = document.getElementById('transferAdminSelect');
+      sel.innerHTML = '<option value="">-- Selecciona un colaborador --</option>';
+
+      const colabs = ADMIN_USER_LIST.filter(u => u.role === 'COLAB' && u.status === 'ACTIVE');
+      colabs.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.email;
+          opt.textContent = `${u.name || u.email} (${u.email})`;
+          sel.appendChild(opt);
+      });
+
+      if (colabs.length === 0) {
+          sel.innerHTML = '<option value="">No hay colaboradores activos disponibles</option>';
+      }
+
+      document.getElementById('modalTransfer').hidden = false;
+  }
+
+  async function confirmTransferAdmin() {
+      const email = document.getElementById('transferAdminSelect').value;
+      if (!email) return modal('Debes seleccionar un usuario.', 'Validación');
+
+      const ok = await modal(`¿Estás seguro de traspasar la administración a ${email}? Perderás tus permisos de administrador inmediatamente.`, 'Confirmar', { confirm: true });
+      if (!ok) return;
+
+      Busy.show('Traspasando administración...');
+      try {
+          const res = await callServer('apiTransferAdmin', { email });
+          if (!res.ok) throw new Error(res.message || 'Error en traspaso.');
+
+          document.getElementById('modalTransfer').hidden = true;
+          await modal('La administración ha sido traspasada. La página se recargará.', 'Éxito');
+          // Recargar para aplicar los nuevos permisos (o falta de ellos)
+          window.top.location.reload();
+      } catch(e) {
+          console.error(e);
+          await modal(String(e.message || e), 'Error');
+      } finally {
+          Busy.hide();
+      }
+  }
+
+  async function showSegmentationDetail(segId){
+    Busy.show('Cargando detalle…');
+    try {
+      const res = await callServer('apiGetSegmentationDetail', { segId });
+      if (!res.ok) throw new Error(res.message || 'Error');
+
+      const tb = document.getElementById('tblSegDetailBody');
+      const tf = document.getElementById('tSegDetailTotal');
+      tb.innerHTML = '';
+
+      (res.data.rows || []).forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(r.regional)}</td><td>${fmtMoney(r.amount)}</td>`;
+        tb.appendChild(tr);
+      });
+
+      tf.textContent = fmtMoney(res.data.total);
+      document.getElementById('modalDetail').hidden = false;
+
+    } catch (e) {
+      console.error('showSegmentationDetail error', e);
       await modal(String(e.message || e), 'Error');
     } finally {
       Busy.hide();

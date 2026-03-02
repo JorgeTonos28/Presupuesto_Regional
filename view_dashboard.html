@@ -1,9 +1,12 @@
 <section id="viewDashboardSection" class="view active">
   <div class="grid">
     <div class="col-12 card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+         <div style="font-size: 32px; font-weight: 800; color: var(--primary);" id="displayYear"></div>
+      </div>
       <div class="row">
         <div>
-          <label>Año</label>
+          <label>Cambiar Año</label>
           <select id="yearSelect"></select>
         </div>
 
@@ -41,34 +44,38 @@
 
     <div class="col-12">
       <div style="font-weight:800;margin:8px 0">Por Regional</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Regional</th>
-            <th>Base</th>
-            <th>Presupuestado</th>
-            <th>Disponible</th>
-          </tr>
-        </thead>
-        <tbody id="tblRegionals"></tbody>
-      </table>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Regional</th>
+              <th>Base</th>
+              <th>Presupuestado</th>
+              <th>Disponible</th>
+            </tr>
+          </thead>
+          <tbody id="tblRegionals"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="col-12">
       <div style="font-weight:800;margin:8px 0">Segmentaciones (del año)</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Etiqueta</th>
-            <th>%</th>
-            <th>Total presupuestado</th>
-            <th>Creado por</th>
-            <th id="thActions" hidden>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="tblSegs"></tbody>
-      </table>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Etiqueta</th>
+              <th>%</th>
+              <th>Total presupuestado</th>
+              <th>Creado por</th>
+              <th id="thActions" hidden>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tblSegs"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </section>
