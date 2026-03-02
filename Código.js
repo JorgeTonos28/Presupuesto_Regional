@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.8
+ * Versión: 1.0.9
  ***************/
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
