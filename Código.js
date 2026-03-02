@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.9
+ * Versión: 1.1.0
  ***************/
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.1.0';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -17,8 +17,17 @@ function doGet(e) {
   try {
     const userRes = getSessionUser_();
     if (!userRes.ok) {
+      const cfg = getConfig_();
       const denied = HtmlService.createTemplateFromFile('Denied');
       denied.message = userRes.message || 'Acceso denegado.';
+      denied.APP_VERSION = APP_VERSION;
+      denied.signatureUrl = normalizeDriveUrl_(cfg.signature_url);
+      denied.signatureWidth = cfg.signature_width || 'auto';
+      denied.signatureHeight = cfg.signature_height || '40px';
+      denied.adminName = cfg.admin_contact_name || '';
+      denied.adminEmail = cfg.admin_contact_email || '';
+      denied.adminExt = cfg.admin_contact_ext || '';
+
       return denied.evaluate()
         .setTitle('Acceso denegado')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -591,7 +600,10 @@ function ensureConfigDefaults_(ss) {
     ['logo_width', 'auto'],
     ['logo_height', '40px'],
     ['signature_width', 'auto'],
-    ['signature_height', '40px']
+    ['signature_height', '40px'],
+    ['admin_contact_name', ''],
+    ['admin_contact_email', ''],
+    ['admin_contact_ext', '']
   ];
   defaults.forEach(([k, v]) => {
     if (existing[k] === undefined) sh.appendRow([k, v]);

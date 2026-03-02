@@ -12,12 +12,18 @@
         --primary: #2563eb;
         --danger: #dc2626;
       }
+      html { height: 100%; }
       body {
         font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
         background-color: var(--bg);
         color: var(--text);
         margin: 0;
-        height: 100vh;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .main-content {
+        flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -65,19 +71,65 @@
         padding: 12px;
         border-radius: 8px;
         border: 1px dashed var(--border);
+        margin-bottom: 16px;
       }
+      .contact-info {
+        text-align: left;
+        background: #eff6ff;
+        border-left: 4px solid var(--primary);
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        color: #1e3a8a;
+      }
+      .contact-info p { margin: 4px 0; }
+      .contact-info strong { font-weight: 700; }
+
+      .footer{
+        display:flex; justify-content:space-between;
+        align-items: center;
+        padding:12px 16px; border-top:1px solid var(--border);
+        color:var(--muted); font-size:12px;
+        background: white;
+      }
+      .footer-left { display: flex; gap: 10px; }
+      .footer-center { flex: 1; text-align: center; font-weight: bold; }
+      .footer-signature { object-fit: contain; }
     </style>
   </head>
   <body>
-    <div class="card">
-      <div class="icon">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+    <main class="main-content">
+      <div class="card">
+        <div class="icon">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        </div>
+        <div class="title">Acceso Restringido</div>
+        <div class="message"><?= message ?></div>
+        <div class="muted">
+          Si consideras que esto es un error o necesitas acceso al sistema, por favor solicita al Administrador que habilite tu cuenta.
+        </div>
+
+        <? if (adminName || adminEmail || adminExt) { ?>
+        <div class="contact-info">
+          <p style="margin-bottom: 8px; color: var(--primary); font-weight: bold;">Contacto del Administrador:</p>
+          <? if (adminName) { ?><p><strong>Nombre:</strong> <?= adminName ?></p><? } ?>
+          <? if (adminEmail) { ?><p><strong>Correo:</strong> <a href="mailto:<?= adminEmail ?>" style="color: inherit; text-decoration: underline;"><?= adminEmail ?></a></p><? } ?>
+          <? if (adminExt) { ?><p><strong>Extensión:</strong> <?= adminExt ?></p><? } ?>
+        </div>
+        <? } ?>
       </div>
-      <div class="title">Acceso Restringido</div>
-      <div class="message"><?= message ?></div>
-      <div class="muted">
-        Si consideras que esto es un error o necesitas acceso al sistema, por favor solicita al Administrador que habilite tu cuenta en la pestaña de <b>Usuarios</b>.
+    </main>
+
+    <footer class="footer">
+      <div class="footer-left">
+        <span>Versión: <?= APP_VERSION ?></span>
       </div>
-    </div>
+      <div class="footer-center">Dirección de Innovación</div>
+      <div class="footer-right">
+        <? if (signatureUrl) { ?>
+          <img alt="Firma Desarrollador" class="footer-signature" src="<?= signatureUrl ?>" style="width: <?= signatureWidth ?>; height: <?= signatureHeight ?>;">
+        <? } ?>
+      </div>
+    </footer>
   </body>
 </html>
