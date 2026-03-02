@@ -261,8 +261,13 @@
     const pct = Number(document.getElementById('pctInput').value);
     const label = String(document.getElementById('labelInput').value || '').trim();
 
-    if (!(pct > 0 && pct <= 100)) {
-      await modal('Porcentaje debe ser > 0 y <= 100.', 'Validación');
+    if (pct <= 0 || pct > 100) {
+      await modal('El porcentaje a segmentar debe ser mayor a 0 y menor o igual a 100.', 'Validación');
+      return;
+    }
+
+    if (!label) {
+      await modal('Debes ingresar una Etiqueta para la segmentación.', 'Validación');
       return;
     }
 
@@ -491,10 +496,8 @@
       body.appendChild(tr);
     });
 
-    const total = t.total || 0;
-    const from = (t.offset || 0) + 1;
-    const to = Math.min((t.offset || 0) + (t.limit || 0), total);
-    info.textContent = total ? `Mostrando ${from}-${to} de ${total}` : 'Sin registros';
+    const total = (t.rows || []).length;
+    info.textContent = total ? `Total de registros: ${total}` : 'Sin registros';
   }
 
   async function loadUsers(){
