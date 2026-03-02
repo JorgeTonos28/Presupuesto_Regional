@@ -1,8 +1,8 @@
 /***************
  * App Segmentación Presupuesto Regional
- * Versión: 1.0.7
+ * Versión: 1.0.8
  ***************/
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 
 const SHEET_CONFIG = 'Config';
 const SHEET_USERS = 'Usuarios';
@@ -423,12 +423,51 @@ function apiUpsertUser(payload) {
 
     const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_USERS);
     const map = getHeaderMap_(sh);
-    const row = findRowByValue_(sh, map.email, email);
+    const lastRow = sh.getLastRow();
 
-    if (row) {
-      sh.getRange(row, map.name + 1).setValue(name);
-      sh.getRange(row, map.role + 1).setValue(role);
-      sh.getRange(row, map.status + 1).setValue(status);
+    // Validar Reglas de Administración
+    let adminCount = 0;
+    let targetIsCurrentAdmin = false;
+    let targetRow = 0;
+
+    if (lastRow >= 2) {
+      const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+      vals.forEach((r, i) => {
+        const rowEmail = String(r[map.email] || '').trim().toLowerCase();
+        const rowRole = String(r[map.role] || '');
+        const rowStatus = String(r[map.status] || '');
+
+        if (rowEmail === email) {
+          targetRow = i + 2;
+          if (rowRole === ROLE_ADMIN && rowStatus === 'ACTIVE') {
+            targetIsCurrentAdmin = true;
+          }
+        } else {
+          if (rowRole === ROLE_ADMIN && rowStatus === 'ACTIVE') {
+            adminCount++;
+          }
+        }
+      });
+    }
+
+    // Regla 1: No más de 1 administrador
+    if (role === ROLE_ADMIN && status === 'ACTIVE') {
+       if (adminCount >= 1 && !targetIsCurrentAdmin) {
+           return fail_('Ya existe un Administrador activo. Solo puede haber uno. Si deseas traspasar la administración, utiliza la opción "Traspasar Administración".');
+       }
+    }
+
+    // Regla 2: No dejar el sistema sin administrador
+    if (targetIsCurrentAdmin && (role !== ROLE_ADMIN || status !== 'ACTIVE')) {
+       if (adminCount === 0) {
+           return fail_('No puedes quitarte el rol de Administrador o inactivarte siendo el único Administrador. Debes traspasar la administración a otro usuario primero utilizando la opción "Traspasar Administración".');
+       }
+    }
+
+    if (targetRow) {
+      sh.getRange(targetRow, map.name + 1).setValue(name);
+      sh.getRange(targetRow, map.role + 1).setValue(role);
+      sh.getRange(targetRow, map.status + 1).setValue(status);
     } else {
       sh.appendRow([email, name, role, status, new Date()]);
     }
@@ -438,6 +477,42 @@ function apiUpsertUser(payload) {
   } catch (err) {
     Logger.log('apiUpsertUser error: ' + err);
     return fail_('No se pudo guardar usuario: ' + err.message);
+  }
+}
+
+function apiTransferAdmin(payload) {
+  try {
+    const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
+    if (!userRes.ok) return userRes;
+    requireAdmin_(userRes.data);
+
+    const newAdminEmail = String(payload && payload.email || '').trim().toLowerCase();
+    if (!newAdminEmail) return fail_('Debe seleccionar un usuario válido.');
+
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_USERS);
+    const map = getHeaderMap_(sh);
+
+    const newAdminRow = findRowByValue_(sh, map.email, newAdminEmail);
+    if (!newAdminRow) return fail_('El usuario seleccionado no existe.');
+
+    const currentAdminEmail = userRes.data.email;
+    const currentAdminRow = findRowByValue_(sh, map.email, currentAdminEmail);
+    if (!currentAdminRow) return fail_('Tu usuario no fue encontrado.');
+
+    // Verificar que el nuevo admin no sea el mismo
+    if (newAdminEmail === currentAdminEmail) return fail_('Ya eres el administrador.');
+
+    // Traspasar
+    sh.getRange(currentAdminRow, map.role + 1).setValue(ROLE_COLAB);
+    sh.getRange(newAdminRow, map.role + 1).setValue(ROLE_ADMIN);
+    sh.getRange(newAdminRow, map.status + 1).setValue('ACTIVE'); // Asegurar que quede activo
+
+    SpreadsheetApp.flush();
+    return ok_({ success: true });
+  } catch (err) {
+    Logger.log('apiTransferAdmin error: ' + err);
+    return fail_('No se pudo traspasar la administración: ' + err.message);
   }
 }
 

@@ -36,6 +36,24 @@
   </div>
 </div>
 
+<!-- Modal Transferir Admin -->
+<div id="modalTransfer" class="overlay" hidden style="z-index: 200 !important;">
+  <div class="modal-card">
+    <div class="modal-title">Traspasar Administración</div>
+    <div class="modal-msg">
+      <p style="margin-bottom: 12px; font-size: 14px; color: var(--muted);">
+        Selecciona un usuario colaborador para convertirlo en Administrador. Tu usuario pasará a ser colaborador inmediatamente y perderás los permisos de administración.
+      </p>
+      <label>Nuevo Administrador</label>
+      <select id="transferAdminSelect"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('modalTransfer').hidden = true">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmTransfer">Confirmar Traspaso</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Detalle Segmentación -->
 <div id="modalDetail" class="overlay" hidden>
   <div class="modal-card" style="width: min(800px, 95vw);">

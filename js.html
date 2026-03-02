@@ -149,6 +149,9 @@
 
       document.getElementById('btnSaveUser').onclick = () => saveUser();
 
+      document.getElementById('btnTransferAdminModal').onclick = () => openTransferModal();
+      document.getElementById('btnConfirmTransfer').onclick = () => confirmTransferAdmin();
+
       // Inicial
       showView('viewDashboardSection');
       await loadDashboard();
@@ -418,7 +421,13 @@
           const tbody = document.createElement('tbody');
           rows.forEach(r => {
               const tr = document.createElement('tr');
-              tr.innerHTML = r.map(c => `<td>${escapeHtml(c)}</td>`).join('');
+              tr.innerHTML = r.map((c, i) => {
+                  if (i === presIdx) {
+                      const val = typeof c === 'number' ? c : parseFloat(String(c).replace(/[^0-9.-]/g,'')) || 0;
+                      return `<td>${fmtMoney(val)}</td>`;
+                  }
+                  return `<td>${escapeHtml(c)}</td>`;
+              }).join('');
               tbody.appendChild(tr);
           });
 
@@ -480,6 +489,8 @@
     body.innerHTML = '';
 
     const cols = t.columns || [];
+    const presIdx = cols.findIndex(c => String(c).trim() === 'Presupuesto');
+
     cols.forEach(c => {
       const th = document.createElement('th');
       th.textContent = c;
@@ -490,7 +501,15 @@
       const tr = document.createElement('tr');
       cols.forEach((_, idx) => {
         const td = document.createElement('td');
-        td.textContent = r[idx] === null || r[idx] === undefined ? '' : String(r[idx]);
+        const rawVal = r[idx] === null || r[idx] === undefined ? '' : r[idx];
+
+        if (idx === presIdx) {
+            const numVal = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal).replace(/[^0-9.-]/g,'')) || 0;
+            td.textContent = fmtMoney(numVal);
+        } else {
+            td.textContent = String(rawVal);
+        }
+
         tr.appendChild(td);
       });
       body.appendChild(tr);
@@ -500,15 +519,18 @@
     info.textContent = total ? `Total de registros: ${total}` : 'Sin registros';
   }
 
+  let ADMIN_USER_LIST = [];
   async function loadUsers(){
     if (SESSION_USER.role !== 'ADMIN') return;
     Busy.show('Cargando usuarios…');
     try {
       const res = await callServer('apiListUsers');
       if (!res.ok) throw new Error(res.message || 'Error');
+
+      ADMIN_USER_LIST = res.data || [];
       const tb = document.getElementById('tblUsers');
       tb.innerHTML = '';
-      res.data.forEach(u => {
+      ADMIN_USER_LIST.forEach(u => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(u.email)}</td>
@@ -548,6 +570,49 @@
     } finally {
       Busy.hide();
     }
+  }
+
+  function openTransferModal() {
+      const sel = document.getElementById('transferAdminSelect');
+      sel.innerHTML = '<option value="">-- Selecciona un colaborador --</option>';
+
+      const colabs = ADMIN_USER_LIST.filter(u => u.role === 'COLAB' && u.status === 'ACTIVE');
+      colabs.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.email;
+          opt.textContent = `${u.name || u.email} (${u.email})`;
+          sel.appendChild(opt);
+      });
+
+      if (colabs.length === 0) {
+          sel.innerHTML = '<option value="">No hay colaboradores activos disponibles</option>';
+      }
+
+      document.getElementById('modalTransfer').hidden = false;
+  }
+
+  async function confirmTransferAdmin() {
+      const email = document.getElementById('transferAdminSelect').value;
+      if (!email) return modal('Debes seleccionar un usuario.', 'Validación');
+
+      const ok = await modal(`¿Estás seguro de traspasar la administración a ${email}? Perderás tus permisos de administrador inmediatamente.`, 'Confirmar', { confirm: true });
+      if (!ok) return;
+
+      Busy.show('Traspasando administración...');
+      try {
+          const res = await callServer('apiTransferAdmin', { email });
+          if (!res.ok) throw new Error(res.message || 'Error en traspaso.');
+
+          document.getElementById('modalTransfer').hidden = true;
+          await modal('La administración ha sido traspasada. La página se recargará.', 'Éxito');
+          // Recargar para aplicar los nuevos permisos (o falta de ellos)
+          window.top.location.reload();
+      } catch(e) {
+          console.error(e);
+          await modal(String(e.message || e), 'Error');
+      } finally {
+          Busy.hide();
+      }
   }
 
   async function showSegmentationDetail(segId){
