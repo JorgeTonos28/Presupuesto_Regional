@@ -197,18 +197,19 @@ function apiCreateSegmentation(payload) {
     const base = getBaseTotalsByRegional_(year);
     const seg = getSegmentedTotalsByRegional_(year);
 
+    // Sumar porcentajes de segmentaciones activas
+    const existingSegs = listSegmentations_(year);
+    let totalPct = 0;
+    existingSegs.forEach(s => { totalPct += s.pct; });
+
+    if (round2_(totalPct + pct) > 100) {
+      return fail_('El porcentaje total de segmentaciones no puede superar el 100%. Porcentaje actual: ' + totalPct + '%');
+    }
+
     const remainingByRegional = {};
     Object.keys(base.byRegional).forEach(r => {
       remainingByRegional[r] = round2_((base.byRegional[r] || 0) - (seg.byRegional[r] || 0));
     });
-
-    const totalRemaining = round2_(base.total - seg.total);
-    if (!(totalRemaining > 0)) return fail_('No hay disponible por presupuestar en este año.');
-
-    const targetTotal = round2_(totalRemaining * (pct / 100));
-
-    // Distribución proporcional por regional sobre su disponible
-    const dist = distributeByRemaining_(remainingByRegional, targetTotal);
 
     const ss = SpreadsheetApp.getActive();
     const shSeg = ss.getSheetByName(SHEET_SEG);
@@ -222,10 +223,14 @@ function apiCreateSegmentation(payload) {
 
     // Detalles
     const rows = [];
-    Object.keys(dist).sort().forEach(regional => {
+    Object.keys(base.byRegional).sort().forEach(regional => {
       const remainingBefore = remainingByRegional[regional] || 0;
-      const amount = dist[regional] || 0;
+      const baseRegional = base.byRegional[regional] || 0;
+
+      // La segmentación ahora es un % directo del total base de esa regional
+      const amount = round2_(baseRegional * (pct / 100));
       const remainingAfter = round2_(remainingBefore - amount);
+
       rows.push([segId, year, regional, remainingBefore, amount, remainingAfter, 'ACTIVE']);
     });
 
@@ -329,6 +334,210 @@ function apiGetRegionalDetail(payload) {
   } catch (err) {
     Logger.log('apiGetRegionalDetail error: ' + err);
     return fail_('No se pudo cargar detalle regional: ' + err.message);
+  }
+}
+
+function apiExportReport(payload) {
+  try {
+    const userRes = getSessionUser_();
+    if (!userRes) return fail_('Error interno: getSessionUser_ retornó nulo.');
+    if (!userRes.ok) return userRes;
+
+    const year = parseInt(payload && payload.year, 10);
+    const regional = String(payload && payload.regional || '').trim();
+    const type = String(payload && payload.type || 'GENERAL');
+    const filterTerm = String(payload && payload.filterTerm || '').toLowerCase().trim();
+    const province = String(payload && payload.province || '');
+    const multiplier = parseFloat(payload && payload.multiplier) || 1;
+
+    if (!year) return fail_('Año inválido.');
+    if (!regional) return fail_('Regional inválida.');
+
+    const baseData = listBaseRows_(year, regional, 0, 5000);
+    const rawRows = baseData.rows || [];
+    const cols = baseData.columns || [];
+
+    const presIdx = cols.findIndex(c => String(c).trim() === 'Presupuesto');
+    const accIdx = cols.findIndex(c => String(c).trim() === 'Acciones');
+    const ptesIdx = cols.findIndex(c => String(c).trim() === 'Ptes');
+    const hrIdx = cols.findIndex(c => String(c).trim() === 'Horas');
+    const provIdx = cols.findIndex(c => String(c).trim() === 'Provincia');
+
+    // 1. Filtrar
+    let filtered = rawRows;
+    if (filterTerm) {
+      const tokens = filterTerm.split(/\s+/);
+      filtered = filtered.filter(row => {
+        const rowStr = row.map(c => String(c)).join(' ').toLowerCase();
+        return tokens.some(t => rowStr.includes(t));
+      });
+    }
+
+    if (province && province !== 'ALL') {
+      filtered = filtered.filter(row => String(row[provIdx] || '') === province);
+    }
+
+    if (!filtered.length) {
+      return fail_('No hay datos con los filtros seleccionados.');
+    }
+
+    // 2. Preparar nuevas columnas
+    const newCols = [];
+    cols.forEach(c => {
+      newCols.push(c);
+      if (c === 'Acciones') {
+        newCols.push('Total Horas', 'Costo A.F.');
+      }
+    });
+
+    // Función auxiliar para mapear filas y calcular totales
+    const processRows = (rowsToProcess) => {
+      let sumPresupuesto = 0;
+      let sumAcciones = 0;
+      let sumPtes = 0;
+      let sumTotalHoras = 0;
+      let sumCostoAF = 0;
+
+      const processed = rowsToProcess.map(r => {
+        const baseHoras = typeof r[hrIdx] === 'number' ? r[hrIdx] : parseFloat(String(r[hrIdx]).replace(/[^0-9.-]/g,'')) || 0;
+        const baseAcciones = typeof r[accIdx] === 'number' ? r[accIdx] : parseFloat(String(r[accIdx]).replace(/[^0-9.-]/g,'')) || 0;
+        const basePresupuesto = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
+
+        const rowAccionesScaled = baseAcciones * multiplier;
+        const rowPresupuestoScaled = basePresupuesto * multiplier;
+        const rowTotalHoras = baseHoras * rowAccionesScaled;
+        const rowCostoAF = rowTotalHoras > 0 ? (rowPresupuestoScaled / rowTotalHoras) : 0;
+
+        sumTotalHoras += rowTotalHoras;
+        sumCostoAF += rowCostoAF;
+
+        const newRow = [];
+        r.forEach((c, i) => {
+          let val = typeof c === 'number' ? c : parseFloat(String(c).replace(/[^0-9.-]/g,'')) || 0;
+          let outputVal = c;
+
+          if (i === presIdx) {
+             val = val * multiplier;
+             outputVal = val;
+             sumPresupuesto += val;
+          } else if (i === accIdx) {
+             val = val * multiplier;
+             outputVal = val;
+             sumAcciones += val;
+          } else if (i === ptesIdx) {
+             val = val * multiplier;
+             outputVal = val;
+             sumPtes += val;
+          }
+
+          newRow.push(outputVal);
+
+          if (i === accIdx) {
+            newRow.push(rowTotalHoras, rowCostoAF);
+          }
+        });
+        return newRow;
+      });
+
+      const newAccIdx = newCols.findIndex(c => String(c).trim() === 'Acciones');
+      const newPtesIdx = newCols.findIndex(c => String(c).trim() === 'Ptes');
+      const newPresIdx = newCols.findIndex(c => String(c).trim() === 'Presupuesto');
+
+      const footer = new Array(newCols.length).fill('');
+      if (newAccIdx > 0) footer[newAccIdx - 1] = 'Totales:';
+      if (newAccIdx > -1) footer[newAccIdx] = sumAcciones;
+      if (newAccIdx > -1) footer[newAccIdx + 1] = sumTotalHoras;
+      if (newAccIdx > -1) footer[newAccIdx + 2] = sumCostoAF;
+      if (newPtesIdx > -1) footer[newPtesIdx] = sumPtes;
+      if (newPresIdx > -1) footer[newPresIdx] = sumPresupuesto;
+
+      return { data: processed, footer: footer };
+    };
+
+    // 3. Crear hoja
+    const mainSs = SpreadsheetApp.getActive();
+    const folderId = DriveApp.getFileById(mainSs.getId()).getParents().next().getId();
+    const parentFolder = DriveApp.getFolderById(folderId);
+
+    // Buscar o crear carpeta "Reportería"
+    let repFolder;
+    const repFolders = parentFolder.getFoldersByName('Reportería');
+    if (repFolders.hasNext()) {
+      repFolder = repFolders.next();
+    } else {
+      repFolder = parentFolder.createFolder('Reportería');
+    }
+
+    // Buscar o crear carpeta "Año"
+    let yearFolder;
+    const yearFolders = repFolder.getFoldersByName(String(year));
+    if (yearFolders.hasNext()) {
+      yearFolder = yearFolders.next();
+    } else {
+      yearFolder = repFolder.createFolder(String(year));
+    }
+
+    // Buscar o crear carpeta "Mes"
+    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const currentMonth = months[new Date().getMonth()];
+    let monthFolder;
+    const monthFolders = yearFolder.getFoldersByName(currentMonth);
+    if (monthFolders.hasNext()) {
+      monthFolder = monthFolders.next();
+    } else {
+      monthFolder = yearFolder.createFolder(currentMonth);
+    }
+
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
+    const ssNew = SpreadsheetApp.create(`Reporte_${type}_${regional}_${timestamp}`);
+    const fileId = ssNew.getId();
+
+    // Mover archivo a la carpeta correspondiente
+    const file = DriveApp.getFileById(fileId);
+    file.moveTo(monthFolder);
+
+    const sheets = ssNew.getSheets();
+    const firstSheet = sheets[0];
+
+    if (type === 'GENERAL') {
+      firstSheet.setName('General');
+      const pData = processRows(filtered);
+
+      const toWrite = [newCols].concat(pData.data).concat([pData.footer]);
+      firstSheet.getRange(1, 1, toWrite.length, toWrite[0].length).setValues(toWrite);
+
+      firstSheet.getRange(1, 1, 1, newCols.length).setFontWeight('bold');
+      firstSheet.getRange(toWrite.length, 1, 1, newCols.length).setFontWeight('bold');
+
+    } else { // DETAILED
+      const provsSet = new Set(filtered.map(r => String(r[provIdx] || '')));
+      const provsList = Array.from(provsSet).sort();
+
+      provsList.forEach(provName => {
+        if (!provName) return;
+        const rowsProv = filtered.filter(r => String(r[provIdx] || '') === provName);
+        if (!rowsProv.length) return;
+
+        const shProv = ssNew.insertSheet(provName.substring(0, 31)); // Nombres de pestañas tienen límite de 31 chars
+        const pData = processRows(rowsProv);
+
+        const toWrite = [newCols].concat(pData.data).concat([pData.footer]);
+        shProv.getRange(1, 1, toWrite.length, toWrite[0].length).setValues(toWrite);
+
+        shProv.getRange(1, 1, 1, newCols.length).setFontWeight('bold');
+        shProv.getRange(toWrite.length, 1, 1, newCols.length).setFontWeight('bold');
+      });
+
+      if (ssNew.getSheets().length > 1) {
+        ssNew.deleteSheet(firstSheet);
+      }
+    }
+
+    return ok_({ url: ssNew.getUrl() });
+
+  } catch (err) {
+    Logger.log('apiExportReport error: ' + err);
+    return fail_('Error exportando reporte: ' + err.message);
   }
 }
 
@@ -898,44 +1107,6 @@ function listBaseRows_(year, regional, offset, limit) {
 /***************
  * Distribución y utilidades
  ***************/
-function distributeByRemaining_(remainingByRegional, targetTotal) {
-  const regs = Object.keys(remainingByRegional).filter(r => (remainingByRegional[r] || 0) > 0);
-  const sumRemaining = regs.reduce((acc, r) => acc + (remainingByRegional[r] || 0), 0);
-
-  const dist = {};
-  if (sumRemaining <= 0) return dist;
-
-  // Primero proporcional, redondeo a 2 decimales
-  let allocated = 0;
-  regs.forEach(r => {
-    const share = (remainingByRegional[r] / sumRemaining) * targetTotal;
-    const amt = round2_(share);
-    dist[r] = amt;
-    allocated = round2_(allocated + amt);
-  });
-
-  // Ajuste por diferencias de redondeo (centavos)
-  let diff = round2_(targetTotal - allocated);
-  if (diff !== 0 && regs.length) {
-    // Ajustar al regional con mayor disponible
-    regs.sort((a, b) => (remainingByRegional[b] || 0) - (remainingByRegional[a] || 0));
-    const top = regs[0];
-    dist[top] = round2_((dist[top] || 0) + diff);
-
-    // No permitir exceder su disponible
-    if (dist[top] > remainingByRegional[top]) dist[top] = round2_(remainingByRegional[top]);
-    if (dist[top] < 0) dist[top] = 0;
-  }
-
-  // Asegura no exceder disponible por regional
-  Object.keys(dist).forEach(r => {
-    const max = remainingByRegional[r] || 0;
-    if (dist[r] > max) dist[r] = round2_(max);
-    if (dist[r] < 0) dist[r] = 0;
-  });
-
-  return dist;
-}
 
 function toNumber_(v) {
   if (typeof v === 'number') return isFinite(v) ? v : 0;
