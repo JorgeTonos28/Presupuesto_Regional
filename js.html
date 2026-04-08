@@ -330,6 +330,18 @@
       // Setup filters
       setupProvinceFilter(RAW_BASE_ROWS, RAW_BASE_COLS);
 
+      const segSel = document.getElementById('regionalSegFilter');
+      segSel.innerHTML = '<option value="1">Total Base</option>';
+      if (res.data.segmentations && res.data.segmentations.length) {
+          res.data.segmentations.forEach(r => {
+              const opt = document.createElement('option');
+              const pctDecimal = Number(r.pct) / 100;
+              opt.value = pctDecimal;
+              opt.textContent = `${r.label || 'Seg'} (${Number(r.pct).toFixed(2)}%)`;
+              segSel.appendChild(opt);
+          });
+      }
+
       // Initial Render
       filterAndRenderBaseTable();
 
@@ -348,6 +360,43 @@
   document.getElementById('provinceSelect').addEventListener('change', () => {
       renderProvinceBreakdown();
   });
+
+  document.getElementById('regionalSegFilter').addEventListener('change', () => {
+      filterAndRenderBaseTable();
+      renderProvinceBreakdown();
+  });
+
+  document.getElementById('btnDownloadReport').addEventListener('click', () => {
+      document.getElementById('modalExport').hidden = false;
+  });
+
+  document.getElementById('btnExportGeneral').addEventListener('click', () => handleExport('GENERAL'));
+  document.getElementById('btnExportDetailed').addEventListener('click', () => handleExport('DETAILED'));
+
+  async function handleExport(type) {
+      document.getElementById('modalExport').hidden = true;
+      const year = Number(document.getElementById('yearSelectRegional').value);
+      const regional = String(document.getElementById('regionalSelect').value || '').trim();
+      const filterTerm = String(document.getElementById('regionalFilter').value || '').toLowerCase().trim();
+      const province = String(document.getElementById('provinceSelect').value || '');
+      const multiplier = Number(document.getElementById('regionalSegFilter').value) || 1;
+
+      if (!regional) return modal('Selecciona una regional.', 'Validación');
+
+      Busy.show('Generando reporte en Sheets...');
+      try {
+          const res = await callServer('apiExportReport', { year, regional, type, filterTerm, province, multiplier });
+          if (!res.ok) throw new Error(res.message || 'Error al generar reporte.');
+          if (res.data && res.data.url) {
+              window.open(res.data.url, '_blank');
+          }
+      } catch (e) {
+          console.error('handleExport error', e);
+          await modal(String(e.message || e), 'Error al exportar');
+      } finally {
+          Busy.hide();
+      }
+  }
 
   function setupProvinceFilter(rows, cols) {
      const pIdx = cols.indexOf('Provincia'); // Ajustar si el nombre es diferente
@@ -378,8 +427,13 @@
 
       if (!sel) return; // Nada seleccionado
 
+      const multiplier = Number(document.getElementById('regionalSegFilter').value) || 1;
+
       const pIdx = RAW_BASE_COLS.indexOf('Provincia');
       const presIdx = RAW_BASE_COLS.indexOf('Presupuesto');
+      const accIdx = RAW_BASE_COLS.indexOf('Acciones');
+      const ptesIdx = RAW_BASE_COLS.indexOf('Ptes');
+      const hrIdx = RAW_BASE_COLS.indexOf('Horas');
 
       if (pIdx === -1 || presIdx === -1) return;
 
@@ -394,11 +448,11 @@
           if (!rows.length) return;
 
           // Calculate total
-          let total = 0;
-          rows.forEach(r => {
-              const val = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
-              total += val;
-          });
+          let sumPresupuesto = 0;
+          let sumAcciones = 0;
+          let sumPtes = 0;
+          let sumTotalHoras = 0;
+          let sumCostoAF = 0;
 
           // Create table
           const card = document.createElement('div');
@@ -416,24 +470,88 @@
 
           const table = document.createElement('table');
           const thead = document.createElement('thead');
-          thead.innerHTML = `<tr>${RAW_BASE_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
+          let headHtml = `<tr>`;
+          RAW_BASE_COLS.forEach(c => {
+              headHtml += `<th>${escapeHtml(c)}</th>`;
+              if (c === 'Acciones') {
+                  headHtml += `<th>Total Horas</th><th>Costo A.F.</th>`;
+              }
+          });
+          headHtml += `</tr>`;
+          thead.innerHTML = headHtml;
 
           const tbody = document.createElement('tbody');
           rows.forEach(r => {
               const tr = document.createElement('tr');
-              tr.innerHTML = r.map((c, i) => {
+              let rowHtml = '';
+              let rowAccionesScaled = 0;
+              let rowTotalHoras = 0;
+              let rowCostoAF = 0;
+
+              // Parse base values needed for new columns
+              const baseHoras = typeof r[hrIdx] === 'number' ? r[hrIdx] : parseFloat(String(r[hrIdx]).replace(/[^0-9.-]/g,'')) || 0;
+              const baseAcciones = typeof r[accIdx] === 'number' ? r[accIdx] : parseFloat(String(r[accIdx]).replace(/[^0-9.-]/g,'')) || 0;
+              const basePresupuesto = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
+
+              rowAccionesScaled = baseAcciones * multiplier;
+              const rowPresupuestoScaled = basePresupuesto * multiplier;
+              rowTotalHoras = baseHoras * rowAccionesScaled;
+              rowCostoAF = rowTotalHoras > 0 ? (rowPresupuestoScaled / rowTotalHoras) : 0;
+
+              sumTotalHoras += rowTotalHoras;
+              sumCostoAF += rowCostoAF;
+
+              r.forEach((c, i) => {
+                  let val = typeof c === 'number' ? c : parseFloat(String(c).replace(/[^0-9.-]/g,'')) || 0;
+                  let displayVal = escapeHtml(c);
+
                   if (i === presIdx) {
-                      const val = typeof c === 'number' ? c : parseFloat(String(c).replace(/[^0-9.-]/g,'')) || 0;
-                      return `<td>${fmtMoney(val)}</td>`;
+                      val = val * multiplier;
+                      displayVal = fmtMoney(val);
+                      sumPresupuesto += val;
+                  } else if (i === accIdx) {
+                      val = val * multiplier;
+                      // Acciones may not be integer if scaled, but typically shown rounded or 2 decimals? Let's show rounded to 2 for scaled
+                      displayVal = Number(val).toFixed(2);
+                      sumAcciones += val;
+                  } else if (i === ptesIdx) {
+                      val = val * multiplier;
+                      displayVal = Number(val).toFixed(2);
+                      sumPtes += val;
                   }
-                  return `<td>${escapeHtml(c)}</td>`;
-              }).join('');
+
+                  rowHtml += `<td>${displayVal}</td>`;
+
+                  if (i === accIdx) {
+                      rowHtml += `<td>${Number(rowTotalHoras).toFixed(2)}</td><td>${fmtMoney(rowCostoAF)}</td>`;
+                  }
+              });
+
+              tr.innerHTML = rowHtml;
               tbody.appendChild(tr);
           });
 
           // Footer with total
           const tfoot = document.createElement('tfoot');
-          tfoot.innerHTML = `<tr><td colspan="${RAW_BASE_COLS.length}" style="text-align:right; font-weight:800; background:#f9fafb;">Total: ${fmtMoney(total)}</td></tr>`;
+          let footHtml = `<tr><td colspan="${accIdx}" style="text-align:right; font-weight:800; background:#f9fafb;">Totales:</td>`;
+          footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumAcciones).toFixed(2)}</td>`;
+          footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumTotalHoras).toFixed(2)}</td>`;
+          footHtml += `<td style="font-weight:800; background:#f9fafb;">${fmtMoney(sumCostoAF)}</td>`;
+
+          // fill gap between Ptes and Presupuesto if any
+          const colsAfterNew = RAW_BASE_COLS.length - accIdx - 1;
+          for (let i = 1; i <= colsAfterNew; i++) {
+              const currIdx = accIdx + i;
+              if (currIdx === ptesIdx) {
+                  footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumPtes).toFixed(2)}</td>`;
+              } else if (currIdx === presIdx) {
+                  footHtml += `<td style="font-weight:800; background:#f9fafb;">${fmtMoney(sumPresupuesto)}</td>`;
+              } else {
+                  footHtml += `<td style="background:#f9fafb;"></td>`;
+              }
+          }
+          footHtml += `</tr>`;
+          tfoot.innerHTML = footHtml;
 
           table.appendChild(thead);
           table.appendChild(tbody);
@@ -488,35 +606,105 @@
     head.innerHTML = '';
     body.innerHTML = '';
 
+    // Attempt to remove existing tfoot if any
+    const tableEl = head.closest('table');
+    const oldTfoot = tableEl.querySelector('tfoot');
+    if (oldTfoot) oldTfoot.remove();
+
     const cols = t.columns || [];
     const presIdx = cols.findIndex(c => String(c).trim() === 'Presupuesto');
+    const accIdx = cols.findIndex(c => String(c).trim() === 'Acciones');
+    const ptesIdx = cols.findIndex(c => String(c).trim() === 'Ptes');
+    const hrIdx = cols.findIndex(c => String(c).trim() === 'Horas');
 
+    const multiplier = Number(document.getElementById('regionalSegFilter').value) || 1;
+
+    let headHtml = '';
     cols.forEach(c => {
-      const th = document.createElement('th');
-      th.textContent = c;
-      head.appendChild(th);
+      headHtml += `<th>${escapeHtml(c)}</th>`;
+      if (c === 'Acciones') {
+          headHtml += `<th>Total Horas</th><th>Costo A.F.</th>`;
+      }
     });
+    head.innerHTML = headHtml;
+
+    let sumPresupuesto = 0;
+    let sumAcciones = 0;
+    let sumPtes = 0;
+    let sumTotalHoras = 0;
+    let sumCostoAF = 0;
 
     (t.rows || []).forEach(r => {
       const tr = document.createElement('tr');
+
+      let rowAccionesScaled = 0;
+      let rowTotalHoras = 0;
+      let rowCostoAF = 0;
+
+      const baseHoras = typeof r[hrIdx] === 'number' ? r[hrIdx] : parseFloat(String(r[hrIdx]).replace(/[^0-9.-]/g,'')) || 0;
+      const baseAcciones = typeof r[accIdx] === 'number' ? r[accIdx] : parseFloat(String(r[accIdx]).replace(/[^0-9.-]/g,'')) || 0;
+      const basePresupuesto = typeof r[presIdx] === 'number' ? r[presIdx] : parseFloat(String(r[presIdx]).replace(/[^0-9.-]/g,'')) || 0;
+
+      rowAccionesScaled = baseAcciones * multiplier;
+      const rowPresupuestoScaled = basePresupuesto * multiplier;
+      rowTotalHoras = baseHoras * rowAccionesScaled;
+      rowCostoAF = rowTotalHoras > 0 ? (rowPresupuestoScaled / rowTotalHoras) : 0;
+
+      sumTotalHoras += rowTotalHoras;
+      sumCostoAF += rowCostoAF;
+
+      let rowHtml = '';
       cols.forEach((_, idx) => {
-        const td = document.createElement('td');
         const rawVal = r[idx] === null || r[idx] === undefined ? '' : r[idx];
+        let val = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal).replace(/[^0-9.-]/g,'')) || 0;
+        let displayVal = escapeHtml(rawVal);
 
         if (idx === presIdx) {
-            const numVal = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal).replace(/[^0-9.-]/g,'')) || 0;
-            td.textContent = fmtMoney(numVal);
-        } else {
-            td.textContent = String(rawVal);
+            val = val * multiplier;
+            displayVal = fmtMoney(val);
+            sumPresupuesto += val;
+        } else if (idx === accIdx) {
+            val = val * multiplier;
+            displayVal = Number(val).toFixed(2);
+            sumAcciones += val;
+        } else if (idx === ptesIdx) {
+            val = val * multiplier;
+            displayVal = Number(val).toFixed(2);
+            sumPtes += val;
         }
 
-        tr.appendChild(td);
+        rowHtml += `<td>${displayVal}</td>`;
+        if (idx === accIdx) {
+             rowHtml += `<td>${Number(rowTotalHoras).toFixed(2)}</td><td>${fmtMoney(rowCostoAF)}</td>`;
+        }
       });
+      tr.innerHTML = rowHtml;
       body.appendChild(tr);
     });
 
+    const tfoot = document.createElement('tfoot');
+    let footHtml = `<tr><td colspan="${accIdx}" style="text-align:right; font-weight:800; background:#f9fafb;">Totales:</td>`;
+    footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumAcciones).toFixed(2)}</td>`;
+    footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumTotalHoras).toFixed(2)}</td>`;
+    footHtml += `<td style="font-weight:800; background:#f9fafb;">${fmtMoney(sumCostoAF)}</td>`;
+
+    const colsAfterNew = cols.length - accIdx - 1;
+    for (let i = 1; i <= colsAfterNew; i++) {
+        const currIdx = accIdx + i;
+        if (currIdx === ptesIdx) {
+            footHtml += `<td style="font-weight:800; background:#f9fafb;">${Number(sumPtes).toFixed(2)}</td>`;
+        } else if (currIdx === presIdx) {
+            footHtml += `<td style="font-weight:800; background:#f9fafb;">${fmtMoney(sumPresupuesto)}</td>`;
+        } else {
+            footHtml += `<td style="background:#f9fafb;"></td>`;
+        }
+    }
+    footHtml += `</tr>`;
+    tfoot.innerHTML = footHtml;
+    tableEl.appendChild(tfoot);
+
     const total = (t.rows || []).length;
-    info.textContent = total ? `Total de registros: ${total}` : 'Sin registros';
+    info.innerHTML = total ? `Total de registros: <b>${total}</b> | Total Acciones: <b>${Number(sumAcciones).toFixed(2)}</b> | Total Ptes: <b>${Number(sumPtes).toFixed(2)}</b> | Presupuesto: <b>${fmtMoney(sumPresupuesto)}</b>` : 'Sin registros';
   }
 
   let ADMIN_USER_LIST = [];

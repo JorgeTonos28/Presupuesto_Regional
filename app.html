@@ -54,6 +54,23 @@
   </div>
 </div>
 
+<!-- Modal Exportar -->
+<div id="modalExport" class="overlay" hidden style="z-index: 200 !important;">
+  <div class="modal-card">
+    <div class="modal-title">Descargar Reporte</div>
+    <div class="modal-msg">
+      <p style="margin-bottom: 12px; font-size: 14px; color: var(--muted);">
+        ¿Deseas descargar un reporte detallado (por provincias en pestañas separadas) o uno general (consolidado regional en una sola pestaña)?
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('modalExport').hidden = true">Cancelar</button>
+      <button class="btn btn-secondary" id="btnExportGeneral">General</button>
+      <button class="btn btn-primary" id="btnExportDetailed">Detallado</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Detalle Segmentación -->
 <div id="modalDetail" class="overlay" hidden>
   <div class="modal-card" style="width: min(800px, 95vw);">

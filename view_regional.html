@@ -53,6 +53,12 @@
       <div class="card" style="margin-bottom: 12px;">
          <div class="row">
              <div>
+                 <label>Segmentación</label>
+                 <select id="regionalSegFilter">
+                     <option value="1">Total Base</option>
+                 </select>
+             </div>
+             <div>
                  <label>Filtrar por Provincia (Detalle abajo)</label>
                  <select id="provinceSelect">
                      <option value="">Cargando...</option>
@@ -62,6 +68,9 @@
                  <label>Buscar en Base de Datos</label>
                  <input type="text" id="regionalFilter" placeholder="Escribe palabras clave (ej: 1000 curso)">
              </div>
+         </div>
+         <div style="margin-top: 12px;">
+             <button class="btn btn-secondary" id="btnDownloadReport">Descargar</button>
          </div>
       </div>
 
